@@ -3,6 +3,7 @@ import express from "express";
 import dotenv from "dotenv";
 import cron from "node-cron";
 import { publishDuePosts } from "./cron.js";
+import sequelize from "./db/connection.js";
 
 dotenv.config();
 
@@ -11,6 +12,25 @@ const PORT = process.env.PORT || 4000;
 
 // Middleware for auth
 app.use(express.json());
+
+app.get("/db-status", async (req, res) => {
+  try {
+    console.log(
+      "🔄 Checking database connection..............................................................."
+    );
+    await sequelize.authenticate();
+    console.log(
+      "✅ Database connection initialized successfully....................................."
+    );
+    res.json({ success: true, message: "Database connected successfully" });
+  } catch (error) {
+    console.error(
+      "❌ Database connection failed.........................:",
+      error.message
+    );
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 app.get("/run-cron", async (req, res) => {
   const authHeader = req.headers.authorization;
