@@ -1,181 +1,34 @@
 import fetch from "node-fetch";
 import { User, ScheduledPost, Schedule, Topic } from "./db/models.js";
-import sequelize from "./db/connection.js";
-import { GoogleGenAI, Modality } from "@google/genai";
-import fs from "fs";
 import { Op } from "sequelize";
+import { Buffer } from "buffer";
 
-const accessToken = process.env.LINKEDIN_ACCESS_TOKEN;
+// const accessToken = process.env.LINKEDIN_ACCESS_TOKEN;
 
-// export async function publishDuePosts() {
-//   const now = new Date();
-//   console.log("🕒 Cron job started:", now.toISOString());
+// https://image-api.dev-kyde.workers.dev/
 
-//   const outerTx = await sequelize.transaction();
+export async function generateLinkedInPost(
+  topic,
+  description = "",
+  includeImage = false
+) {
+  const textApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const imageApiKey = process.env.CF_IMAGE_GENERATION_API_KEY;
 
-//   try {
-//     // Fetch all active schedules with topic + user
-//     const schedules = await Schedule.findAll({
-//       where: { isActive: true },
-//       include: [
-//         {
-//           model: Topic,
-//           include: [User],
-//         },
-//       ],
-//       transaction: outerTx,
-//     });
+  let post = null;
+  let imageBase64 = null;
 
-//     if (!schedules.length) {
-//       console.log("⚠️ No active schedules found.");
-//       await outerTx.commit();
-//       return;
-//     }
-
-//     console.log(`📌 Found ${schedules.length} active schedules.`);
-
-//     for (const schedule of schedules) {
-//       const topic = schedule.Topic;
-//       const user = topic?.User;
-
-//       if (!user || !user.linkedinAccessToken) {
-//         console.log("⚠️ Skipping schedule: user missing or no LinkedIn token.");
-//         continue;
-//       }
-
-//       const PostUserId = user.linkedinProfileId;
-//       const PostUserEmail = user.email;
-
-//       // Extract scheduled time
-//       const [hours, minutes] = schedule.scheduledTime.split(":").map(Number);
-
-//       // Compute scheduled time for today
-//       const scheduledDate = new Date();
-//       scheduledDate.setHours(hours, minutes, 0, 0);
-
-//       // Last time this schedule successfully posted
-//       const lastGenerated = schedule.lastGeneratedAt || new Date(0);
-
-//       let shouldPost = false;
-
-//       // --- DAILY ---
-//       if (schedule.frequency === "daily") {
-//         // Post once per day — anytime after the scheduled hour
-//         shouldPost = now >= scheduledDate && lastGenerated < scheduledDate;
-//       }
-
-//       // --- WEEKLY ---
-//       else if (schedule.frequency === "weekly") {
-//         const isToday = now.getDay() === schedule.dayOfWeek;
-//         shouldPost =
-//           isToday && now >= scheduledDate && lastGenerated < scheduledDate;
-//       }
-
-//       // --- MONTHLY ---
-//       else if (schedule.frequency === "monthly") {
-//         const isToday = now.getDate() === scheduledDate.getDate();
-//         shouldPost =
-//           isToday && now >= scheduledDate && lastGenerated < scheduledDate;
-//       }
-
-//       // If conditions fail, skip posting
-//       if (!shouldPost) {
-//         continue;
-//       }
-
-//       console.log(`🧠 Generating post for topic "${topic.title}"...`);
-
-//       // Transaction for this posting operation
-//       const innerTx = await sequelize.transaction();
-
-//       try {
-//         // 1) Generate content
-//         const rawContent = await generateLinkedInPost(
-//           topic.title,
-//           topic.description ||
-//             "Write a professional, engaging LinkedIn post related to this topic."
-//         );
-
-//         console.log("post content: ", rawContent);
-
-//         // 2) Publish to LinkedIn
-//         const content =
-//           typeof rawContent === "string"
-//             ? rawContent
-//             : rawContent.post || JSON.stringify(rawContent);
-
-//         const result = await publishToLinkedIn(
-//           accessToken,
-//           content, // ✅ now a string
-//           PostUserId,
-//           PostUserEmail
-//         );
-
-//         // console.log(
-//         //   "post text content itself: ",
-//         //   content,
-//         //   "this: ",
-//         //   content.post
-//         // );
-
-//         // 3) If successful, save in DB
-//         if (result.success) {
-//           await ScheduledPost.create(
-//             {
-//               scheduleId: schedule.id,
-//               topicId: topic.id,
-//               content: content,
-//               scheduledFor: scheduledDate,
-//               status: "published",
-//               isActive: false,
-//               publishedAt: now,
-//               linkedinPostId: result.postId,
-//               userId: user.id,
-//             },
-//             { transaction: innerTx }
-//           );
-
-//           // Update last posted timestamp
-//           await schedule.update(
-//             { lastGeneratedAt: now },
-//             { transaction: innerTx }
-//           );
-
-//           await innerTx.commit();
-//           console.log(`✅ Successfully posted: "${topic.title}"`);
-//         } else {
-//           await innerTx.rollback();
-//           console.warn(`❌ Failed LinkedIn publish: ${result.error}`);
-//         }
-//       } catch (err) {
-//         await innerTx.rollback();
-//         console.error(`🚨 Error posting for "${topic.title}":`, err);
-//       }
-//     }
-
-//     await outerTx.commit();
-//     console.log("🎯 Finished checking schedules.");
-//   } catch (error) {
-//     await outerTx.rollback();
-//     console.error("🚨 Fatal error in publishDuePosts:", error);
-//   }
-// }
-
-export async function generateLinkedInPost(topic, description = "") {
-  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  const ImageApiKey = process.env.GOOGLE_IMAGE_GENERATION_API_KEY;
-
-  const ai = new GoogleGenAI({ apiKey: ImageApiKey });
-
+  // --------------------------------------------------
+  // 1️⃣ TEXT GENERATION (CRITICAL — MUST SUCCEED)
+  // --------------------------------------------------
   try {
-    // 1️⃣ Generate post text and image prompt
     const textResponse = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-goog-api-key": apiKey,
+          "X-goog-api-key": textApiKey,
         },
         body: JSON.stringify({
           contents: [
@@ -183,26 +36,21 @@ export async function generateLinkedInPost(topic, description = "") {
               parts: [
                 {
                   text: `Using the following template, generate an engaging LinkedIn-style post using the title "${topic}". 
-                  Maintain the structure and this tone: ${description}. 
-              
-                  Follow these Requirements strictly:
-                - Contrust a unique post title that captures attention not more than 150 characters.
-                - The post should have a humanized body (with paragraphs if needed)  
-                - Fit within these guidelines
-                - The post must be relevant to LinkedIn audiences who are expected to be educational tech professionals or educational leaders.
-                - Remove any greetings or sign-offs
-                - Remove any extra headings or subtitles
-                - Focus solely on the post content
-                - Use a clear and concise writing style
-                - Maximum 600 characters
-                - Minimum 500 characters
-                - Professional and engaging tone
-                - Include relevant hashtags (2-3)
-                - No emojis
-                - Make it actionable or thought-provoking
-                - Sound as human as possible
+                    Maintain the structure and this tone: ${description}. 
 
-                Return only the post content, nothing else.`,
+                    Requirements:
+                    - Unique title (≤150 chars)
+                    - Humanized body
+                    - LinkedIn-focused (EdTech leaders)
+                    - No greetings or sign-offs
+                    - No headings
+                    - 500–600 characters
+                    - Professional tone
+                    - 2–3 hashtags
+                    - No emojis
+                    - Actionable
+
+                    Return only the post content.`,
                 },
               ],
             },
@@ -214,257 +62,101 @@ export async function generateLinkedInPost(topic, description = "") {
     const textData = await textResponse.json();
 
     if (!textResponse.ok) {
-      throw new Error(
-        `Gemini API Error: ${
-          textData.error?.message || textResponse.statusText
-        }`
-      );
+      console.error("❌ Gemini text API error:", textData);
+      return { post: null, imageBase64: null };
     }
 
-    const post =
-      textData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ||
-      "No content generated.";
+    post = textData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
 
-    //console.log("Generated post content:", post);
-
-    // 2️⃣ Generate matching image
-    // const imagePrompt = `Genrate a professional background image related to ${topic}. It should be suitable for a professional LinkedIn post. The style should be clean, modern, and visually appealing to educational tech professionals and leaders. Avoid using any text or logos in the image. Use a color palette that is engaging yet professional. Strict size: "1024x1024"`;
-
-    // const imageResponse = await ai.models.generateContent({
-    //   model: "gemini-2.0-flash-preview-image-generation",
-    //   contents: imagePrompt,
-    //   config: {
-    //     responseModalities: [Modality.TEXT, Modality.IMAGE],
-    //   },
-    // });
-
-    // let imageBase64 = null;
-
-    // const candidates = imageResponse?.candidates || [];
-    // for (const candidate of candidates) {
-    //   const parts = candidate?.content?.parts || [];
-    //   for (const part of parts) {
-    //     if (part.inlineData?.data) {
-    //       imageBase64 = part.inlineData.data;
-
-    //       // Save a local copy (optional)
-    //       const buffer = Buffer.from(imageBase64, "base64");
-    //       fs.writeFileSync("linkedin-post-image.png", buffer);
-    //       console.log("✅ Image saved as linkedin-post-image.png");
-
-    //       break;
-    //     }
-    //   }
-    //   if (imageBase64) break; // stop early if found
-    // }
-
-    // if (!imageBase64) {
-    //   console.warn("⚠️ No base64 image found in Gemini response");
-    // }
-
-    // return { post, imageBase64 };
-    return { post };
-  } catch (error) {
-    console.error("Gemini Image Generation Error:", error);
-    throw new Error("Failed to generate AI content or image");
+    if (!post) {
+      console.error("❌ Gemini returned empty post content");
+      return { post: null, imageBase64: null };
+    }
+  } catch (err) {
+    console.error("❌ Text generation crashed:", err.message);
+    return { post: null, imageBase64: null };
   }
+
+  // --------------------------------------------------
+  // 2️⃣ IMAGE GENERATION (OPTIONAL — FLAG CONTROLLED)
+  // --------------------------------------------------
+  if (includeImage) {
+    try {
+      const imagePrompt = `Professional LinkedIn background image related to "${topic}". 
+Clean, modern, no text, no logos.`;
+
+      const res = await fetch("https://image-api.dev-kyde.workers.dev/", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${imageApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt: imagePrompt }),
+      });
+
+      if (!res.ok) {
+        console.warn("⚠️ Image API responded with:", res.status);
+        imageBase64 = null;
+      } else {
+        const arrayBuffer = await res.arrayBuffer();
+        imageBase64 = Buffer.from(arrayBuffer).toString("base64");
+      }
+    } catch (err) {
+      console.warn("⚠️ Image generation failed (ignored):", err.message);
+      imageBase64 = null;
+    }
+  } else {
+    // Explicitly skip image generation
+    console.log(
+      `🖼️ Image generation skipped (includeImage=false) for topic: "${topic}"`
+    );
+    imageBase64 = null;
+  }
+
+  // --------------------------------------------------
+  // 3️⃣ RETURN (TEXT ALWAYS, IMAGE MAYBE)
+  // --------------------------------------------------
+  return {
+    post,
+    imageBase64, // null if image failed
+  };
 }
-
-// export async function publishToLinkedIn(
-//   accessToken,
-//   content,
-//   PostuserId,
-//   PostUserEmail
-// ) {
-//   //console.log("access token being used:", accessToken, PostuserId);
-
-//   try {
-//     let authorUrn = null;
-//     let imageUrn = null;
-//     const { post, imageBase64 } = content;
-
-//     // ✅ If we already have the LinkedIn user ID stored
-//     if (PostuserId) {
-//       authorUrn = `urn:li:person:${PostuserId}`;
-//     } else {
-//       // ✅ Otherwise, fetch it from LinkedIn's /userinfo endpoint
-//       const meResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
-//         headers: {
-//           Authorization: `Bearer ${accessToken}`,
-//           "X-Restli-Protocol-Version": "2.0.0",
-//         },
-//       });
-
-//       if (!meResponse.ok) {
-//         const error = await meResponse.json();
-//         throw new Error(
-//           error.message || "Failed to fetch LinkedIn user profile"
-//         );
-//       }
-
-//       const meData = await meResponse.json();
-//       //console.log("LinkedIn user profile data:", meData);
-
-//       if (!meData?.sub) {
-//         throw new Error("Missing 'sub' field in LinkedIn profile data.");
-//       }
-
-//       authorUrn = `urn:li:person:${meData.sub}`;
-//       console.log("LinkedIn author URN:", authorUrn);
-
-//       // Optional: store the LinkedIn ID in your DB for next time
-//       await User.update(
-//         { linkedinProfileId: meData.sub },
-//         { where: { email: PostUserEmail } }
-//       );
-//     }
-
-//     function formatPostText(rawText) {
-//       return rawText
-//         .replace(/\r\n/g, "\n") // normalize line endings
-//         .replace(/\n{3,}/g, "\n\n") // prevent too many blank lines
-//         .trim();
-//     }
-//     const formattedPost = formatPostText(post);
-//     // 🖼 Upload image if provided
-//     if (imageBase64) {
-//       //console.log("Uploading image to LinkedIn...");
-
-//       // Step 1: Register upload
-//       const registerRes = await fetch(
-//         "https://api.linkedin.com/v2/assets?action=registerUpload",
-//         {
-//           method: "POST",
-//           headers: {
-//             Authorization: `Bearer ${accessToken}`,
-//             "Content-Type": "application/json",
-//           },
-//           body: JSON.stringify({
-//             registerUploadRequest: {
-//               recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
-//               owner: authorUrn,
-//               serviceRelationships: [
-//                 {
-//                   relationshipType: "OWNER",
-//                   identifier: "urn:li:userGeneratedContent",
-//                 },
-//               ],
-//             },
-//           }),
-//         }
-//       );
-
-//       const registerData = await registerRes.json();
-
-//       if (!registerRes.ok) {
-//         throw new Error(
-//           `Failed to register image upload: ${
-//             registerData.message || registerRes.statusText
-//           }`
-//         );
-//       }
-
-//       const uploadUrl =
-//         registerData.value.uploadMechanism[
-//           "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
-//         ].uploadUrl;
-//       imageUrn = registerData.value.asset;
-
-//       // Step 2: Upload image
-//       const buffer = Buffer.from(imageBase64, "base64");
-//       const uploadRes = await fetch(uploadUrl, {
-//         method: "PUT",
-//         headers: { Authorization: `Bearer ${accessToken}` },
-//         body: buffer,
-//       });
-
-//       if (!uploadRes.ok) {
-//         throw new Error(`Failed to upload image: ${uploadRes.statusText}`);
-//       }
-
-//       //console.log("✅ Image uploaded:", imageUrn);
-//     }
-
-//     // 📝 Step 3: Publish post
-//     const postBody = {
-//       author: authorUrn,
-//       lifecycleState: "PUBLISHED",
-//       specificContent: {
-//         "com.linkedin.ugc.ShareContent": {
-//           shareCommentary: { text: formattedPost },
-//           shareMediaCategory: imageUrn ? "IMAGE" : "NONE",
-//           media: imageUrn ? [{ status: "READY", media: imageUrn }] : [],
-//         },
-//       },
-//       visibility: {
-//         "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
-//       },
-//     };
-
-//     // ✅ Now create the LinkedIn post
-//     const postRes = await fetch("https://api.linkedin.com/v2/ugcPosts", {
-//       method: "POST",
-//       headers: {
-//         Authorization: `Bearer ${accessToken}`,
-//         "Content-Type": "application/json",
-//         "X-Restli-Protocol-Version": "2.0.0",
-//       },
-//       body: JSON.stringify(postBody),
-//     });
-
-//     // response = await fetch("https://api.linkedin.com/v2/ugcPosts", {
-//     //   method: "POST",
-//     //   headers: {
-//     //     Authorization: `Bearer ${accessToken}`,
-//     //     "Content-Type": "application/json",
-//     //     "X-Restli-Protocol-Version": "2.0.0",
-//     //   },
-//     //   body: JSON.stringify({
-//     //     author: authorUrn,
-//     //     lifecycleState: "PUBLISHED",
-//     //     specificContent: {
-//     //       "com.linkedin.ugc.ShareContent": {
-//     //         shareCommentary: { text: content },
-//     //         shareMediaCategory: "NONE",
-//     //       },
-//     //     },
-//     //     visibility: {
-//     //       "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
-//     //     },
-//     //   }),
-//     // });
-
-//     if (!postRes.ok) {
-//       const error = await postRes.json();
-//       throw new Error(error.message || "Failed to publish to LinkedIn");
-//     }
-
-//     const data = await postRes.json();
-//     console.log("✅ LinkedIn post created:", data);
-
-//     return { success: true, postId: data.id };
-//   } catch (error) {
-//     console.error("🚨 LinkedIn publishing error:", error);
-//     return { success: false, error: error.message };
-//   }
-// }
 
 export async function publishToLinkedIn(
   accessToken,
   content,
   PostuserId,
-  PostUserEmail
+  PostUserEmail,
+  providedImageBase64 = null
 ) {
-  console.log("posting content: ", content);
+  console.log(
+    "posting content length: ",
+    content ? content.length : "undefined"
+  );
 
   try {
     let authorUrn = null;
+    let imageUrn = null;
 
-    // ✅ Use stored LinkedIn user ID if available
+    // Handle content/image arguments robustly
+    let postText = content;
+    let imageBase64 = providedImageBase64;
+
+    // Support if content was passed as object (legacy/user attempt)
+    if (typeof content === "object" && content !== null) {
+      postText = content.post || content.content; // Try to extract text
+      if (content.imageBase64) imageBase64 = content.imageBase64;
+    }
+
+    if (!postText) {
+      throw new Error("Post content is missing");
+    }
+
+    // ✅ If we already have the LinkedIn user ID stored
     if (PostuserId) {
       authorUrn = `urn:li:person:${PostuserId}`;
     } else {
-      // ✅ Otherwise, fetch user info from LinkedIn
+      // ✅ Otherwise, fetch it from LinkedIn's /userinfo endpoint
       const meResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -496,40 +188,107 @@ export async function publishToLinkedIn(
     }
 
     function formatPostText(rawText) {
+      if (!rawText) return "";
       return rawText
-        .replace(/\*/g, "")
-        .replace(/\r\n/g, "\n")
-        .replace(/\n{3,}/g, "\n\n")
+        .replace(/\*/g, "") // remove all asterisks
+        .replace(/\r\n/g, "\n") // normalize line endings
+        .replace(/\n{3,}/g, "\n\n") // prevent too many blank lines
         .trim();
     }
-
-    let postText;
-
-    if (typeof content === "string") {
-      postText = content;
-    } else if (
-      typeof content === "object" &&
-      typeof content.post === "string"
-    ) {
-      postText = content.post;
-    } else {
-      console.warn(
-        "⚠️ content was not a string; stringifying fallback:",
-        content
-      );
-      postText = JSON.stringify(content);
-    }
-
     const formattedPost = formatPostText(postText);
 
-    // 📝 Build text-only LinkedIn post body
+    // 🖼 Upload image if provided
+    if (imageBase64) {
+      console.log("Found imageBase64, starting upload process...");
+
+      // Step 1: Register upload
+      const registerRes = await fetch(
+        "https://api.linkedin.com/v2/assets?action=registerUpload",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+          body: JSON.stringify({
+            registerUploadRequest: {
+              recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+              owner: authorUrn,
+              serviceRelationships: [
+                {
+                  relationshipType: "OWNER",
+                  identifier: "urn:li:userGeneratedContent",
+                },
+              ],
+            },
+          }),
+        }
+      );
+
+      const registerData = await registerRes.json();
+      console.log(
+        "Register Upload Response:",
+        JSON.stringify(registerData, null, 2)
+      );
+
+      if (!registerRes.ok) {
+        throw new Error(
+          `Failed to register image upload: ${
+            registerData.message || registerRes.statusText
+          }`
+        );
+      }
+
+      const uploadUrl =
+        registerData.value.uploadMechanism[
+          "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+        ].uploadUrl;
+      imageUrn = registerData.value.asset;
+
+      console.log("Image URN:", imageUrn);
+      console.log("Upload URL:", uploadUrl);
+
+      // Step 2: Upload image
+      const buffer = Buffer.from(imageBase64, "base64");
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          // Authorization: `Bearer ${accessToken}` // Usually NOT needed for signed URLs and can cause 400
+          "Content-Type": "application/octet-stream",
+        },
+        body: buffer,
+      });
+
+      console.log("Image Upload Status:", uploadRes.status);
+
+      if (!uploadRes.ok) {
+        const errText = await uploadRes.text();
+        console.error("Image upload failed details:", errText);
+        throw new Error(`Failed to upload image: ${uploadRes.statusText}`);
+      }
+
+      console.log("✅ Image uploaded successfully:", imageUrn);
+    }
+
+    // 📝 Step 3: Publish post
     const postBody = {
       author: authorUrn,
       lifecycleState: "PUBLISHED",
       specificContent: {
         "com.linkedin.ugc.ShareContent": {
           shareCommentary: { text: formattedPost },
-          shareMediaCategory: "NONE", // 🚫 no image
+          shareMediaCategory: imageUrn ? "IMAGE" : "NONE",
+          media: imageUrn
+            ? [
+                {
+                  status: "READY",
+                  description: { text: "Generated by AI" },
+                  media: imageUrn,
+                  title: { text: "Post Image" },
+                },
+              ]
+            : [],
         },
       },
       visibility: {
@@ -537,7 +296,9 @@ export async function publishToLinkedIn(
       },
     };
 
-    // ✅ Publish the post
+    console.log("Publishing body:", JSON.stringify(postBody, null, 2));
+
+    // ✅ Now create the LinkedIn post
     const postRes = await fetch("https://api.linkedin.com/v2/ugcPosts", {
       method: "POST",
       headers: {
@@ -563,9 +324,6 @@ export async function publishToLinkedIn(
   }
 }
 
-// -------------------------------------------
-// CRON JOB: Publish all due scheduled posts
-// -------------------------------------------
 export async function publishDuePosts() {
   const now = new Date();
   console.log("🕒 Cron job started:", now.toISOString());
@@ -610,30 +368,45 @@ export async function publishDuePosts() {
     // STEP 1 — Generate Content
     // -------------------------------------------
     let rawContent;
-    try {
-      rawContent = await generateLinkedInPost(
-        topic.title,
-        topic.description || "Write a professional LinkedIn post on this topic."
-      );
-    } catch (err) {
-      console.error("🔥 Error generating content:", err);
+
+    rawContent = await generateLinkedInPost(
+      topic.title,
+      topic.description || "Write a professional LinkedIn post on this topic.",
+      topic.includeImage === true
+    );
+
+    if (!rawContent || !rawContent.post) {
+      console.log("⚠️ Skipping post — no text generated (likely rate limit)");
+      console.warn("⚠️ Skipping post — no text generated (likely rate limit)");
       continue;
     }
 
     // Ensure string content
-    const content =
-      typeof rawContent === "string"
-        ? rawContent
-        : rawContent.post || JSON.stringify(rawContent);
+    // const content =
+    //   typeof rawContent === "string"
+    //     ? rawContent
+    //     : rawContent.post || JSON.stringify(rawContent);
+
+    let content;
+
+    if (typeof rawContent === "string") {
+      content = rawContent;
+    } else if (rawContent && typeof rawContent.post === "string") {
+      content = rawContent.post;
+    } else {
+      console.warn("⚠️ Unexpected rawContent shape:", rawContent);
+      content = JSON.stringify(rawContent);
+    }
 
     // -------------------------------------------
     // STEP 2 — Publish to LinkedIn
     // -------------------------------------------
     const publishResult = await publishToLinkedIn(
-      accessToken,
+      user?.linkedinAccessToken,
       content,
       user.linkedinProfileId,
-      user.email
+      user.email,
+      rawContent.imageBase64 // ✅ REQUIRED
     );
 
     if (!publishResult.success) {
@@ -683,9 +456,6 @@ export async function publishDuePosts() {
   console.log("🎉 Finished processing due posts.");
 }
 
-// --------------------------------------------------
-// Calculate next scheduledFor date based on frequency
-// --------------------------------------------------
 function calculateNextDate(schedule) {
   const now = new Date();
   const [hours, minutes] = schedule.scheduledTime.split(":").map(Number);
@@ -726,3 +496,253 @@ function calculateNextDate(schedule) {
 
   throw new Error(`Unknown schedule frequency: ${schedule.frequency}`);
 }
+
+// OLD CODE ---------------------------------------------------------------------------------------------------
+
+// export async function generateLinkedInPost(topic, description = "") {
+//   const textApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+//   const imageApiKey = process.env.CF_IMAGE_GENERATION_API_KEY;
+
+//   let post = null;
+//   let imageBase64 = null;
+
+//   /**
+//    * 1️⃣ TEXT GENERATION (CRITICAL)
+//    */
+//   try {
+//     const textResponse = await fetch(
+//       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+//       {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//           "X-goog-api-key": textApiKey,
+//         },
+//         body: JSON.stringify({
+//           contents: [
+//             {
+//               parts: [
+//                 {
+//                   text: `Using the following template, generate an engaging LinkedIn-style post using the title "${topic}".
+// Maintain the structure and this tone: ${description}.
+
+// Requirements:
+// - Unique title (≤150 chars)
+// - Humanized body
+// - LinkedIn-focused (EdTech leaders)
+// - No greetings or sign-offs
+// - No headings
+// - 500–600 characters
+// - Professional tone
+// - 2–3 hashtags
+// - No emojis
+// - Actionable
+
+// Return only the post content.`,
+//                 },
+//               ],
+//             },
+//           ],
+//         }),
+//       }
+//     );
+
+//     const textData = await textResponse.json();
+
+//     if (!textResponse.ok) {
+//       throw new Error(textData.error?.message || "Text generation failed");
+//     }
+
+//     post = textData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+
+//     if (!post) {
+//       throw new Error("No post content returned");
+//     }
+//   } catch (error) {
+//     console.error("❌ Text generation failed:", error.message);
+
+//     // IMPORTANT: do NOT throw
+//     return {
+//       post: null,
+//       imageBase64: null,
+//     };
+//   }
+
+//   /**
+//    * 2️⃣ IMAGE GENERATION (OPTIONAL / BEST-EFFORT)
+//    */
+//   try {
+//     const ai = new GoogleGenAI({ apiKey: imageApiKey });
+
+//     const imagePrompt = `Generate a professional LinkedIn background image related to "${topic}".
+// Clean, modern, no text, no logos. 1024x1024.`;
+
+//     const imageResponse = await ai.models.generateContent({
+//       model: "gemini-2.0-flash-preview-image-generation",
+//       contents: imagePrompt,
+//       config: {
+//         responseModalities: [Modality.TEXT, Modality.IMAGE],
+//       },
+//     });
+
+//     const candidates = imageResponse?.candidates || [];
+
+//     for (const candidate of candidates) {
+//       const parts = candidate?.content?.parts || [];
+//       for (const part of parts) {
+//         if (part.inlineData?.data) {
+//           imageBase64 = part.inlineData.data;
+//           break;
+//         }
+//       }
+//       if (imageBase64) break;
+//     }
+
+//     if (!imageBase64) {
+//       console.warn("⚠️ Image generation returned no image");
+//     }
+//   } catch (imageError) {
+//     // 🚨 IMPORTANT: swallow image errors
+//     console.warn("⚠️ Image generation failed, continuing without image");
+//     console.log("image gen failed: ", imageError.message);
+//   }
+
+//   /**
+//    * 3️⃣ ALWAYS RETURN TEXT
+//    */
+//   return {
+//     post,
+//     imageBase64, // null if failed
+//   };
+// }
+
+// export async function publishToLinkedIn(
+//   accessToken,
+//   content,
+//   PostuserId,
+//   PostUserEmail
+// ) {
+//   console.log("posting content: ", content);
+
+//   try {
+//     let authorUrn = null;
+
+//     // ✅ Use stored LinkedIn user ID if available
+//     if (PostuserId) {
+//       authorUrn = `urn:li:person:${PostuserId}`;
+//     } else {
+//       // ✅ Otherwise, fetch user info from LinkedIn
+//       const meResponse = await fetch("https://api.linkedin.com/v2/userinfo", {
+//         headers: {
+//           Authorization: `Bearer ${accessToken}`,
+//           "X-Restli-Protocol-Version": "2.0.0",
+//         },
+//       });
+
+//       if (!meResponse.ok) {
+//         const error = await meResponse.json();
+//         throw new Error(
+//           error.message || "Failed to fetch LinkedIn user profile"
+//         );
+//       }
+
+//       const meData = await meResponse.json();
+
+//       if (!meData?.sub) {
+//         throw new Error("Missing 'sub' field in LinkedIn profile data.");
+//       }
+
+//       authorUrn = `urn:li:person:${meData.sub}`;
+//       console.log("LinkedIn author URN:", authorUrn);
+
+//       // Optional: persist LinkedIn ID for next time
+//       await User.update(
+//         { linkedinProfileId: meData.sub },
+//         { where: { email: PostUserEmail } }
+//       );
+//     }
+
+//     function formatPostText(rawText) {
+//       return rawText
+//         .replace(/\*/g, "")
+//         .replace(/\r\n/g, "\n")
+//         .replace(/\n{3,}/g, "\n\n")
+//         .trim();
+//     }
+
+//     let postText;
+
+//     if (typeof content === "string") {
+//       postText = content;
+//     } else if (
+//       typeof content === "object" &&
+//       typeof content.post === "string"
+//     ) {
+//       postText = content.post;
+//     } else {
+//       console.warn(
+//         "⚠️ content was not a string; stringifying fallback:",
+//         content
+//       );
+//       postText = JSON.stringify(content);
+//     }
+
+//     const formattedPost = formatPostText(postText);
+
+//     // 📝 Build text-only LinkedIn post body
+//     const postBody = {
+//       author: authorUrn,
+//       lifecycleState: "PUBLISHED",
+//       specificContent: {
+//         "com.linkedin.ugc.ShareContent": {
+//           shareCommentary: { text: formattedPost },
+//           shareMediaCategory: "NONE", // 🚫 no image
+//         },
+//       },
+//       visibility: {
+//         "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+//       },
+//     };
+
+//     // ✅ Publish the post
+//     const postRes = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+//       method: "POST",
+//       headers: {
+//         Authorization: `Bearer ${accessToken}`,
+//         "Content-Type": "application/json",
+//         "X-Restli-Protocol-Version": "2.0.0",
+//       },
+//       body: JSON.stringify(postBody),
+//     });
+
+//     if (!postRes.ok) {
+//       const error = await postRes.json();
+//       throw new Error(error.message || "Failed to publish to LinkedIn");
+//     }
+
+//     const data = await postRes.json();
+//     console.log("✅ LinkedIn post created:", data);
+
+//     return { success: true, postId: data.id };
+//   } catch (error) {
+//     console.error("🚨 LinkedIn publishing error:", error);
+//     return { success: false, error: error.message };
+//   }
+// }
+
+// -------------------------------------------
+// CRON JOB: Publish all due scheduled posts
+// -------------------------------------------
+
+// const res = await fetch("https://image-api.dev-kyde.workers.dev/", {
+//   method: "POST",
+//   headers: {
+//     Authorization: `Bearer ${imageApiKey}`,
+//     "Content-Type": "application/json",
+//   },
+//   body: JSON.stringify({ prompt: "" }),
+// });
+// const blob = await res.blob();
+// const img = document.createElement("img");
+// img.src = URL.createObjectURL(blob);
+// img.style.height = "500px";

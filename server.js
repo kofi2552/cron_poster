@@ -1,5 +1,6 @@
 // server.mjs
 import express from "express";
+import cors from "cors";
 import dotenv from "dotenv";
 import cron from "node-cron";
 import { publishDuePosts } from "./cron.js";
@@ -9,6 +10,17 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+app.use(
+  cors({
+    origin: [
+      "http://localhost:3000",
+      "https://linkedin-poster-omega.vercel.app",
+    ],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
+  })
+);
 
 // Middleware for auth
 app.use(express.json());
