@@ -11,11 +11,11 @@ const __dirname = path.dirname(__filename);
 // Load env vars
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
-const RENDER_DB_HOST = RENDER_DB_HOST.process.env;
-const RENDER_DB_PORT = RENDER_DB_PORT.process.env;
-const RENDER_DB_USERNAME = RENDER_DB_USERNAME.process.env;
-const RENDER_DB_PASSWORD = RENDER_DB_PASSWORD.process.env;
-const RENDER_DB_NAME = RENDER_DB_NAME.process.env;
+const RENDER_DB_HOST = process.env.RENDER_DB_HOST;
+const RENDER_DB_PORT = process.env.RENDER_DB_PORT;
+const RENDER_DB_USERNAME = process.env.RENDER_DB_USERNAME;
+const RENDER_DB_PASSWORD = process.env.RENDER_DB_PASSWORD;
+const RENDER_DB_NAME = process.env.RENDER_DB_NAME;
 
 // 🔒 Defensive check (prevents silent crashes)
 if (
