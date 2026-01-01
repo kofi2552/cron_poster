@@ -10,9 +10,10 @@ import { Buffer } from "buffer";
 export async function generateLinkedInPost(
   topic,
   description = "",
-  includeImage = false
+  includeImage = false,
+  userPersona
 ) {
-  const textApiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  const textApiKey = process.env.GROQ_API_KEY;
   const imageApiKey = process.env.CF_IMAGE_GENERATION_API_KEY;
 
   let post = null;
@@ -23,38 +24,65 @@ export async function generateLinkedInPost(
   // --------------------------------------------------
   try {
     const textResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+      "https://api.groq.com/openai/v1/chat/completions",
       {
         method: "POST",
         headers: {
+          Authorization: `Bearer ${textApiKey}`, // ✅ FIXED
           "Content-Type": "application/json",
-          "X-goog-api-key": textApiKey,
         },
         body: JSON.stringify({
-          contents: [
+          model: "llama-3.1-8b-instant",
+          messages: [
             {
-              parts: [
-                {
-                  text: `Using the following template, generate an engaging LinkedIn-style post using the title "${topic}". 
-                    Maintain the structure and this tone: ${description}. 
+              role: "system",
+              content: "You are a professional LinkedIn content writer.",
+            },
+            {
+              role: "user",
+              content: `Using the following template, generate an engaging LinkedIn-style post using the title "${topic}". 
+                  Maintain the structure and this tone: ${
+                    description || userPersona.tone || "professional"
+                  }. 
+              
+                  Author Context (The Persona):
+                  - Profession: ${
+                    userPersona.profession || "Industry Professional"
+                  }
+                  - Industry: ${userPersona.industry || "General Business"}
+                  - Bio/Background: ${
+                    userPersona.bio ||
+                    "Experienced professional sharing insights."
+                  }
+                  - Voice/Tone: ${
+                    userPersona.tone || "Professional, engaging, and authentic"
+                  }
 
-                    Requirements:
-                    - Unique title (≤150 chars)
-                    - Humanized body
-                    - LinkedIn-focused (EdTech leaders)
-                    - No greetings or sign-offs
-                    - No headings
-                    - 500–600 characters
-                    - Professional tone
-                    - 2–3 hashtags
-                    - No emojis
-                    - Actionable
+                  Follow these Requirements strictly:
+                - Construct a viral linkedin post title that captures attention not more than 150 characters.
+                - The viral post should have a body (with paragraphs -   at least 2)  
+                - SOUND AS HUMAN AS POSSIBLE
+                - The post must be relevant to LinkedIn audiences in the ${
+                  userPersona.industry || "General Business"
+                } industry.
+                - Write FROM the perspective of a ${
+                  userPersona.profession || "professional"
+                }, incorporating their expertise.
+                - Remove any greetings or sign-offs
+                - Remove any extra headings or subtitles
+                - Focus solely on the post content
+                - Use a clear and concise writing style
+                - Maximum 600 characters
+                - Minimum 500 characters
+                - Professional and engaging tone
+                - Include relevant hashtags (2-3)
+                - No emojis , only output the clean words, no noise characters or decorative symbols.
+                
 
-                    Return only the post content.`,
-                },
-              ],
+                Return only the post content, nothing else.`,
             },
           ],
+          temperature: 0.7,
         }),
       }
     );
@@ -62,14 +90,16 @@ export async function generateLinkedInPost(
     const textData = await textResponse.json();
 
     if (!textResponse.ok) {
-      console.error("❌ Gemini text API error:", textData);
+      console.error("❌ Groq text API error:", textData);
       return { post: null, imageBase64: null };
     }
 
-    post = textData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
+    post = textData?.choices?.[0]?.message?.content?.trim() || null;
+
+    // console.log("post:", post);
 
     if (!post) {
-      console.error("❌ Gemini returned empty post content");
+      console.error("❌ Groq returned empty post content");
       return { post: null, imageBase64: null };
     }
   } catch (err) {
@@ -83,7 +113,7 @@ export async function generateLinkedInPost(
   if (includeImage) {
     try {
       const imagePrompt = `Professional LinkedIn background image related to "${topic}". 
-Clean, modern, no text, no logos.`;
+            Clean, modern, no text, no logos.`;
 
       const res = await fetch("https://image-api.dev-kyde.workers.dev/", {
         method: "POST",
@@ -372,12 +402,12 @@ export async function publishDuePosts() {
     rawContent = await generateLinkedInPost(
       topic.title,
       topic.description || "Write a professional LinkedIn post on this topic.",
-      topic.includeImage === true
+      topic.includeImage === true,
+      user
     );
 
     if (!rawContent || !rawContent.post) {
       console.log("⚠️ Skipping post — no text generated (likely rate limit)");
-      console.warn("⚠️ Skipping post — no text generated (likely rate limit)");
       continue;
     }
 
