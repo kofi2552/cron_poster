@@ -95,6 +95,9 @@ import sequelize from "./connection.js";
 // User model
 
 // User model
+
+// User model
+
 export const User = sequelize.define(
   "User",
   {
@@ -107,6 +110,10 @@ export const User = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
+    },
+    name: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     linkedinProfileId: {
       type: DataTypes.STRING,
@@ -145,6 +152,10 @@ export const User = sequelize.define(
       defaultValue: false,
     },
     isPremium: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    hasSeenOnboarding: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
     },
@@ -334,7 +345,7 @@ export const ScheduledPost = sequelize.define(
       allowNull: true,
     },
     imageBase64: {
-      type: DataTypes.TEXT,
+      type: DataTypes.TEXT, // Supports large base64 strings (Postgres TEXT represents generic unlimited length string)
       allowNull: true,
     },
     createdAt: {
@@ -348,12 +359,57 @@ export const ScheduledPost = sequelize.define(
   }
 );
 
+// Feedback model
+export const Feedback = sequelize.define(
+  "Feedback",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    type: {
+      type: DataTypes.ENUM("suggestion", "issue", "other"),
+      defaultValue: "suggestion",
+    },
+    content: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: true,
+    tableName: "feedback",
+  }
+);
+
 // Define associations
+User.hasMany(Feedback, { foreignKey: "userId", onDelete: "CASCADE" });
+Feedback.belongsTo(User, { foreignKey: "userId" });
+
 User.hasMany(Topic, { foreignKey: "userId", onDelete: "CASCADE" });
 Topic.belongsTo(User, { foreignKey: "userId" });
 
+// Explicit cascade for User -> Schedule to ensure clean deletion
+User.hasMany(Schedule, { foreignKey: "userId", onDelete: "CASCADE" });
+
 Topic.hasMany(Schedule, { foreignKey: "topicId", onDelete: "CASCADE" });
 Schedule.belongsTo(Topic, { foreignKey: "topicId" });
+
+// Explicit cascade for User -> ScheduledPost
+User.hasMany(ScheduledPost, { foreignKey: "userId", onDelete: "CASCADE" });
 
 Schedule.hasMany(ScheduledPost, {
   foreignKey: "scheduleId",
@@ -364,3 +420,46 @@ ScheduledPost.belongsTo(Schedule, { foreignKey: "scheduleId" });
 
 Topic.hasMany(ScheduledPost, { foreignKey: "topicId", onDelete: "CASCADE" });
 ScheduledPost.belongsTo(Topic, { foreignKey: "topicId" });
+
+// ActivityLog model
+export const ActivityLog = sequelize.define(
+  "ActivityLog",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    action: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    details: {
+      type: DataTypes.TEXT, // Store JSON string or simple text
+      allowNull: true,
+    },
+    ipAddress: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: false, // Only need creation time
+    tableName: "activity_logs",
+  }
+);
+
+User.hasMany(ActivityLog, { foreignKey: "userId", onDelete: "CASCADE" });
+ActivityLog.belongsTo(User, { foreignKey: "userId" });
