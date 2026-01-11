@@ -59,6 +59,7 @@ export async function generateLinkedInPost(
                   }
 
                   Follow these Requirements strictly:
+                - Do NOT MENTION the persona profession or details in the post!.
                 - Construct a viral linkedin post title that captures attention not more than 150 characters.
                 - The viral post should have a body (with paragraphs -   at least 2)  
                 - SOUND AS HUMAN AS POSSIBLE

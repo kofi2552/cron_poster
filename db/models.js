@@ -1,103 +1,7 @@
 import { DataTypes } from "sequelize";
 import sequelize from "./connection.js";
 
-// export const User = sequelize.define(
-//   "User",
-//   {
-//     id: {
-//       type: DataTypes.UUID,
-//       defaultValue: DataTypes.UUIDV4,
-//       primaryKey: true,
-//     },
-//     email: { type: DataTypes.STRING, allowNull: false, unique: true },
-//     linkedinProfileId: { type: DataTypes.STRING },
-//     linkedinAccessToken: { type: DataTypes.TEXT },
-//     linkedinTokenExpiresAt: { type: DataTypes.DATE },
-//   },
-//   { timestamps: true, tableName: "users" }
-// );
-
-// export const Topic = sequelize.define(
-//   "Topic",
-//   {
-//     id: {
-//       type: DataTypes.UUID,
-//       defaultValue: DataTypes.UUIDV4,
-//       primaryKey: true,
-//     },
-//     userId: { type: DataTypes.UUID, allowNull: false },
-//     title: { type: DataTypes.STRING, allowNull: false },
-//     description: { type: DataTypes.TEXT },
-//   },
-//   { timestamps: true, tableName: "topics" }
-// );
-
-// export const Schedule = sequelize.define(
-//   "Schedule",
-//   {
-//     id: {
-//       type: DataTypes.UUID,
-//       defaultValue: DataTypes.UUIDV4,
-//       primaryKey: true,
-//     },
-//     userId: { type: DataTypes.UUID, allowNull: false },
-//     topicId: { type: DataTypes.UUID, allowNull: false },
-//     frequency: {
-//       type: DataTypes.ENUM("daily", "weekly", "monthly"),
-//       allowNull: false,
-//     },
-//     scheduledTime: { type: DataTypes.TIME, allowNull: false },
-//     dayOfWeek: { type: DataTypes.INTEGER },
-//     isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
-//     lastGeneratedAt: { type: DataTypes.DATE },
-//   },
-//   { timestamps: true, tableName: "schedules" }
-// );
-
-// export const ScheduledPost = sequelize.define(
-//   "ScheduledPost",
-//   {
-//     id: {
-//       type: DataTypes.UUID,
-//       defaultValue: DataTypes.UUIDV4,
-//       primaryKey: true,
-//     },
-//     userId: { type: DataTypes.UUID, allowNull: false },
-//     scheduleId: { type: DataTypes.UUID, allowNull: false },
-//     topicId: { type: DataTypes.UUID, allowNull: false },
-//     content: { type: DataTypes.TEXT, allowNull: false },
-//     scheduledFor: { type: DataTypes.DATE, allowNull: false },
-//     status: {
-//       type: DataTypes.ENUM("pending", "published", "failed"),
-//       defaultValue: "pending",
-//     },
-//     publishedAt: { type: DataTypes.DATE },
-//     linkedinPostId: { type: DataTypes.STRING },
-//     retryCount: { type: DataTypes.INTEGER, defaultValue: 0 },
-//     errorMessage: { type: DataTypes.TEXT },
-//   },
-//   { timestamps: true, tableName: "scheduled_posts" }
-// );
-
-// // 🔗 Associations
-// User.hasMany(Topic, { foreignKey: "userId" });
-// Topic.belongsTo(User, { foreignKey: "userId" });
-
-// Topic.hasMany(Schedule, { foreignKey: "topicId" });
-// Schedule.belongsTo(Topic, { foreignKey: "topicId" });
-
-// Schedule.hasMany(ScheduledPost, { foreignKey: "scheduleId" });
-// ScheduledPost.belongsTo(Schedule, { foreignKey: "scheduleId" });
-
-// Topic.hasMany(ScheduledPost, { foreignKey: "topicId" });
-// ScheduledPost.belongsTo(Topic, { foreignKey: "topicId" });
-
 // User model
-
-// User model
-
-// User model
-
 export const User = sequelize.define(
   "User",
   {
@@ -182,6 +86,76 @@ export const User = sequelize.define(
   }
 );
 
+// SocialAccount model
+export const SocialAccount = sequelize.define(
+  "SocialAccount",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    platform: {
+      type: DataTypes.ENUM(
+        "linkedin",
+        "facebook",
+        "twitter",
+        "tiktok",
+        "instagram"
+      ),
+      allowNull: false,
+    },
+    platformUserId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    accessToken: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    refreshToken: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    tokenExpiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    profileName: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    profilePictureUrl: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: true,
+    tableName: "social_accounts",
+  }
+);
+
 // Topic model
 export const Topic = sequelize.define(
   "Topic",
@@ -251,6 +225,16 @@ export const Schedule = sequelize.define(
         model: Topic,
         key: "id",
       },
+    },
+    platform: {
+      type: DataTypes.ENUM(
+        "linkedin",
+        "facebook",
+        "twitter",
+        "tiktok",
+        "instagram"
+      ),
+      defaultValue: "linkedin",
     },
     frequency: {
       type: DataTypes.ENUM("daily", "weekly", "monthly"),
@@ -336,6 +320,20 @@ export const ScheduledPost = sequelize.define(
       type: DataTypes.STRING,
       allowNull: true,
     },
+    platform: {
+      type: DataTypes.ENUM(
+        "linkedin",
+        "facebook",
+        "twitter",
+        "tiktok",
+        "instagram"
+      ),
+      defaultValue: "linkedin",
+    },
+    externalPostId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     retryCount: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
@@ -398,6 +396,9 @@ export const Feedback = sequelize.define(
 // Define associations
 User.hasMany(Feedback, { foreignKey: "userId", onDelete: "CASCADE" });
 Feedback.belongsTo(User, { foreignKey: "userId" });
+
+User.hasMany(SocialAccount, { foreignKey: "userId", onDelete: "CASCADE" });
+SocialAccount.belongsTo(User, { foreignKey: "userId" });
 
 User.hasMany(Topic, { foreignKey: "userId", onDelete: "CASCADE" });
 Topic.belongsTo(User, { foreignKey: "userId" });
