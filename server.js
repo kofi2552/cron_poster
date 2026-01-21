@@ -16,7 +16,7 @@ app.use(
     origin: [
       "https://postpilot.tudlin.com",
       "http://localhost:3000",
-      "https://linkedin-poster-omega.vercel.app",
+      "https://postpilot-sage.vercel.app",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
