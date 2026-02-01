@@ -14,13 +14,14 @@ const PORT = process.env.PORT || 4000;
 app.use(
   cors({
     origin: [
+      "https://postpilot.onl",
       "https://postpilot.tudlin.com",
-      "http://localhost:3000",
       "https://postpilot-sage.vercel.app",
+      "http://localhost:3000",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
-  })
+  }),
 );
 
 // Middleware for auth
@@ -29,17 +30,17 @@ app.use(express.json());
 app.get("/db-status", async (req, res) => {
   try {
     console.log(
-      "🔄 Checking database connection..............................................................."
+      "🔄 Checking cron system online...............................................................",
     );
-    await sequelize.authenticate();
-    console.log(
-      "✅ Database connection initialized successfully....................................."
-    );
-    res.json({ success: true, message: "Database connected successfully" });
+    // await sequelize.authenticate();
+    // console.log(
+    //   "✅ Database connection initialized successfully.....................................",
+    // );
+    // res.json({ success: true, message: "Database connected successfully" });
   } catch (error) {
     console.error(
-      "❌ Database connection failed.........................:",
-      error.message
+      "❌ Cron system connection failed.........................:",
+      error.message,
     );
     res.status(500).json({ success: false, error: error.message });
   }
