@@ -30,13 +30,13 @@ app.use(express.json());
 app.get("/db-status", async (req, res) => {
   try {
     console.log(
-      "🔄 Checking cron system online...............................................................",
+      "🔄 Checking cron system online ...............................................................",
     );
     // await sequelize.authenticate();
     // console.log(
     //   "✅ Database connection initialized successfully.....................................",
     // );
-    // res.json({ success: true, message: "Database connected successfully" });
+    res.json({ success: true, message: "Cron System Active" });
   } catch (error) {
     console.error(
       "❌ Cron system connection failed.........................:",
