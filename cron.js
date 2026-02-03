@@ -395,7 +395,7 @@ export async function publishDuePosts() {
         content: { [Op.ne]: "" }, // Ensure content exists
       },
       order: [["publishedAt", "DESC"]],
-      limit: 3,
+      limit: 6,
       attributes: ["content"],
     });
 
