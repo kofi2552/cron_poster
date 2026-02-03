@@ -11,7 +11,8 @@ export async function generateLinkedInPost(
   topic,
   description = "",
   includeImage = false,
-  userPersona
+  userPersona,
+  previousPosts = []
 ) {
   const textApiKey = process.env.GROQ_API_KEY;
   const imageApiKey = process.env.CF_IMAGE_GENERATION_API_KEY;
@@ -40,66 +41,35 @@ export async function generateLinkedInPost(
             },
             {
               role: "user",
-              content: `Using the following template, generate an engaging LinkedIn-style post using the title "${topic}". 
-                  Maintain the structure and this tone: ${description || userPersona.tone || "professional"
-                }. 
-              
-                  Author Context (The Persona):
-                  - Profession: ${userPersona.profession || "Industry Professional"
-                }
-                  - Industry: ${userPersona.industry || "General Business"}
-                  - Bio/Background: ${userPersona.bio ||
-                "Experienced professional sharing insights."
-                }
-                  - Voice/Tone: ${userPersona.tone || "Professional, engaging, and authentic"
-                }
+              content: `
+                  You are a top-tier LinkedIn ghostwriter known for viral engagement.
+                  
+                  TOPIC: "${topic}"
+                  
+                  PREVIOUSLY PUBLISHED CONTENT ON THIS TOPIC (DO NOT REPEAT THESE ANGLES/IDEAS):
+                  ${previousPosts.map((p, i) => `[Post ${i + 1}]: ${p}`).join("\n")}
+                  
+                  YOUR GOAL:
+                  Write a completely fresh, engaging post about this topic. 
+                  - If the previous posts were "how-to" lists, write a personal story or a controversial opinion.
+                  - If the previous posts were long, write something punchy and short.
+                  - ensure the new post is DISTINCT from the history provided above.
 
-                  Follow these Requirements strictly:
-                - Do NOT MENTION the persona profession or details in the post!.
-                - Construct a viral linkedin post title that captures attention not more than 150 characters.
-                - The viral post should have a body (with paragraphs -   at least 2)  
-                - SOUND AS HUMAN AS POSSIBLE
-                - The post must be relevant to LinkedIn audiences in the ${userPersona.industry || "General Business"
-                } industry.
-                - Write FROM the perspective of a ${userPersona.profession || "professional"
-                }, incorporating their expertise.
-                - Remove any greetings or sign-offs
-                - Remove any extra headings or subtitles
-                - Focus solely on the post content
-                - Use a clear and concise writing style
-                - Maximum 600 characters
-                - Minimum 500 characters
-                - Professional and engaging tone
-                - Include relevant hashtags (2-3)
-                - No emojis , only output the clean words, no noise characters or decorative symbols.
-
-                - Choose any combinations of these for emotional posts that fit the topic:
-                1. VGH (Vulnerability, Growth, Hope)
-                2. FLR (Failure, Lesson, Redemption)
-                3. IMF (Identity Mirror, Validation, Direction)
-                4. FCA (Fear, Courage, Action)
-                5. IEF (Invisible Effort, Persistence, Progress)
-                6. BSR (Burnout, Simplification, Relief)
-                7. EBS (Emotional Belief Shift - Old belief → New belief)
-                8. QC (Quiet Confidence - Undersell → Reveal → Outcome)
-                9. GRF (Gratitude, Recognition, Reflection)
-                10. TB (Truth Bomb - Hard truth → Pause → Reframe)
-
-                
-                - Choose any number of combinations of these frameworks that best fits the topic (e.g. AIDA + PAS):
-                1. AIDA (Attention, Interest, Desire, Action)
-                2. PAS (Problem, Agitate, Solution)
-                3. PIS (Problem, Insight, Solution)
-                4. BAB (Before, After, Bridge)
-                5. SLO (Story, Lesson, Offer)
-                6. HVC (Hook, Value, CTA)
-                7. MTE (Myth, Truth, Explanation)
-                8. Curiosity Gap (Tease, Build, Reveal)
-                9. Listicle (Promise, List, Wrap)
-                10. Belief Shift (Old belief → New belief)
-                11. Open Loop (Delay → Payoff)
-
-                Return only the post content, nothing else.`,
+                  STRUCTURE & TONE:
+                  - Tone: ${description || userPersona.tone || "professional"}
+                  - Author Context: ${userPersona.profession || "Industry Pro"} (${userPersona.industry || "General"})
+                  
+                  CRITICAL INSTRUCTIONS:
+                  1. **NO TITLES**: Do NOT start with "Title:..." or any heading. 
+                  2. **THE HOOK**: The FIRST line must be a "scroll-stopper" (viral hook). 
+                     - Examples of hooks: "I screwed up.", "Stop doing X.", "Unpopular opinion:", "The secret nobody tells you about [Topic]..."
+                     - Max 150 chars for the hook.
+                  3. **BODY**: Short paragraphs, human-sounding, no corporate fluff.
+                  4. **LENGTH**: 500-700 characters.
+                  5. **FORMAT**: No emojis. 2-3 hashtags at the end.
+                  
+                  OUTPUT:
+                  Return ONLY the raw post content.`,
             },
           ],
           temperature: 0.7,
@@ -414,15 +384,31 @@ export async function publishDuePosts() {
     }
 
     // -------------------------------------------
-    // STEP 1 — Generate Content
+    // STEP 1 — Fetch History & Generate Content
     // -------------------------------------------
+
+    // Fetch last 3 posts for context to avoid repetition
+    const previousPosts = await ScheduledPost.findAll({
+      where: {
+        topicId: topic.id,
+        status: "published",
+        content: { [Op.ne]: "" }, // Ensure content exists
+      },
+      order: [["publishedAt", "DESC"]],
+      limit: 3,
+      attributes: ["content"],
+    });
+
+    const previousContentList = previousPosts.map((p) => p.content);
+
     let rawContent;
 
     rawContent = await generateLinkedInPost(
       topic.title,
       topic.description || "Write a professional LinkedIn post on this topic.",
       topic.includeImage === true,
-      user
+      user,
+      previousContentList
     );
 
     if (!rawContent || !rawContent.post) {
@@ -792,6 +778,6 @@ function calculateNextDate(schedule) {
 //   body: JSON.stringify({ prompt: "" }),
 // });
 // const blob = await res.blob();
-// const img = document.createElement("img");
+// // const img = document.createElement("img");
 // img.src = URL.createObjectURL(blob);
 // img.style.height = "500px";
