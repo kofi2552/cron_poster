@@ -9,6 +9,7 @@ import { Buffer } from "buffer";
 
 export async function generateLinkedInPost(
   topic,
+  postLength,
   description = "",
   includeImage = false,
   userPersona,
@@ -58,14 +59,21 @@ export async function generateLinkedInPost(
                   STRUCTURE & TONE:
                   - Tone: ${description || userPersona.tone || "professional"}
                   - Author Context: ${userPersona.profession || "Industry Pro"} (${userPersona.industry || "General"})
+
+                  - Even though you are using my persona, DO NOT WRITE ABOUT ME. DO NOT MAKE THE POST PERSONAL. Unless explicitly asked!
                   
                   CRITICAL INSTRUCTIONS:
-                  1. **NO TITLES**: Do NOT start with "Title:..." or any heading. 
-                  2. **THE HOOK**: The FIRST line must be a "scroll-stopper" (viral hook). 
+                  1. **postLength**: ${postLength || "medium"} characters.
+                  -If postLength = "short" then the post should be 500-600 characters.
+                  -If postLength = "medium" then the post should be 600-700 characters.
+                  -If postLength = "long" then the post should be 800-900 characters.
+                  - Write in a highly unpredictable, human‑like style with vivid metaphors, varied sentence lengths, surprising word choices, and narrative quirks that maximize perplexity.
+                  2. **NO TITLES**: Do NOT start with "Title:..." or any heading. 
+                  3. **THE HOOK**: The FIRST line must be a "scroll-stopper" (viral hook). 
                      - Examples of hooks: "I screwed up.", "Stop doing X.", "Unpopular opinion:", "The secret nobody tells you about [Topic]..."
                      - Max 150 chars for the hook.
-                  3. **BODY**: Short paragraphs, human-sounding, no corporate fluff.
-                  4. **LENGTH**: 500-700 characters.
+                  4. **BODY**: Short paragraphs, human-sounding, no corporate fluff.
+                  4. Use Popular viral linkedin post STRATEGIES. YOU CAN USE A COMBINATION OF THEM.
                   5. **FORMAT**: No emojis. 2-3 hashtags at the end.
                   
                   OUTPUT:
@@ -405,6 +413,7 @@ export async function publishDuePosts() {
 
     rawContent = await generateLinkedInPost(
       topic.title,
+      topic.postLength,
       topic.description || "Write a professional LinkedIn post on this topic.",
       topic.includeImage === true,
       user,
