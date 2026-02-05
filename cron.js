@@ -63,7 +63,7 @@ export async function generateLinkedInPost(
                   - Even though you are using my persona, DO NOT WRITE ABOUT ME. DO NOT MAKE THE POST PERSONAL. Unless explicitly asked!
                   
                   CRITICAL INSTRUCTIONS:
-                  1. **postLength**: ${postLength || "medium"} characters.
+                  1. **postLength**: ${postLength || "medium"}.
                   -If postLength = "short" then the post should be 500-600 characters.
                   -If postLength = "medium" then the post should be 600-700 characters.
                   -If postLength = "long" then the post should be 800-900 characters.
