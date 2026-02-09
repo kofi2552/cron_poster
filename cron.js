@@ -52,22 +52,21 @@ export async function generateLinkedInPost(
                   
                   YOUR GOAL:
                   Write a completely fresh, engaging post about this topic. 
-                  - If the previous posts were "how-to" lists, write a personal story or a controversial opinion.
-                  - If the previous posts were long, write something punchy and short.
-                  - ensure the new post is DISTINCT from the history provided above.
+                    - If the previous posts were "how-to" lists, write a real-life story or a controversial opinion.
+                    - If the previous posts were about the same topic, write something value packed for the readers.
+                    - ensure the new post is DISTINCT from the history provided above.
 
                   STRUCTURE & TONE:
-                  - Tone: ${description || userPersona.tone || "professional"}
-                  - Author Context: ${userPersona.profession || "Industry Pro"} (${userPersona.industry || "General"})
-
-                  - Even though you are using my persona, DO NOT WRITE ABOUT ME. DO NOT MAKE THE POST PERSONAL. Unless explicitly asked!
+                    - Tone: ${description || userPersona.tone || "professional"}
+                    - Author Context: ${userPersona.profession || "Industry Pro"} (${userPersona.industry || "General"})
+                    - Even though you are using my persona, DO NOT WRITE ABOUT ME. DO NOT MAKE THE POST PERSONAL. Unless explicitly asked!
                   
-                  CRITICAL INSTRUCTIONS:
+                  CRITICAL INSTRUCTIONS ASIDE THE TONE:
                   1. **postLength**: ${postLength || "medium"}.
-                  -If postLength = "short" then the post should be 500-600 characters.
-                  -If postLength = "medium" then the post should be 600-700 characters.
-                  -If postLength = "long" then the post should be 800-900 characters.
-                  - Write in a highly unpredictable, human‑like style with vivid metaphors, varied sentence lengths, surprising word choices, and narrative quirks that maximize perplexity.
+                    - If postLength = "short" then the post should be 500-600 characters.
+                    - If postLength = "medium" then the post should be 600-700 characters.
+                    - If postLength = "long" then the post should be 800-1200 characters.
+                    - Write in a highly unpredictable, human‑like style with vivid metaphors, varied sentence lengths, surprising word choices, and narrative quirks that maximize perplexity.
                   2. **NO TITLES**: Do NOT start with "Title:..." or any heading. 
                   3. **THE HOOK**: The FIRST line must be a "scroll-stopper" (viral hook). 
                      - Examples of hooks: "I screwed up.", "Stop doing X.", "Unpopular opinion:", "The secret nobody tells you about [Topic]..."
@@ -75,6 +74,8 @@ export async function generateLinkedInPost(
                   4. **BODY**: Short paragraphs, human-sounding, no corporate fluff.
                   4. Use Popular viral linkedin post STRATEGIES. YOU CAN USE A COMBINATION OF THEM.
                   5. **FORMAT**: No emojis. 2-3 hashtags at the end.
+
+                  6. DO NOT USE ANY PERSONAL PRONOUN!, DO NOT REFER TO ME!
                   
                   OUTPUT:
                   Return ONLY the raw post content.`,
