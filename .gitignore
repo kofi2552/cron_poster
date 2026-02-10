@@ -1,3 +1,5 @@
 .env
 node_modules
 .DS_Store
+reproduce_issue.js
+test_fix.js

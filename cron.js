@@ -69,13 +69,20 @@ export async function generateLinkedInPost(
                     - Write in a highly unpredictable, human‑like style with vivid metaphors, varied sentence lengths, surprising word choices, and narrative quirks that maximize perplexity.
                   2. **NO TITLES**: Do NOT start with "Title:..." or any heading. 
                   3. **THE HOOK**: The FIRST line must be a "scroll-stopper" (viral hook). 
-                     - Examples of hooks: "I screwed up.", "Stop doing X.", "Unpopular opinion:", "The secret nobody tells you about [Topic]..."
                      - Max 150 chars for the hook.
                   4. **BODY**: Short paragraphs, human-sounding, no corporate fluff.
                   4. Use Popular viral linkedin post STRATEGIES. YOU CAN USE A COMBINATION OF THEM.
-                  5. **FORMAT**: No emojis. 2-3 hashtags at the end.
+                  5. **FORMAT**: No emojis, No special characters. 2-3 hashtags at the end.
 
-                  6. DO NOT USE ANY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                  WARNING!  WARNING!  WARNING!  WARNING!  WARNING!
+                  6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                   6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                    6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                     6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                      6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                       6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                        
+
                   
                   OUTPUT:
                   Return ONLY the raw post content.`,
@@ -111,8 +118,8 @@ export async function generateLinkedInPost(
   // --------------------------------------------------
   if (includeImage) {
     try {
-      const imagePrompt = `Professional LinkedIn background image related to "${topic}". 
-            Clean, modern, no text, no logos.`;
+      const imagePrompt = `Professional LinkedIn Tech background image creative for the "${topic}". 
+            KEEP IT minimal, Clean, modern. WARNING: NO TEXT IN THE IMAGE!, NO BRANDS LOGOS IN THE IMAGE!, NO FACES IN THE IMAGE.`;
 
       const res = await fetch("https://image-api.dev-kyde.workers.dev/", {
         method: "POST",
@@ -393,6 +400,41 @@ export async function publishDuePosts() {
     }
 
     // -------------------------------------------
+    // STEP 0 — SAFETY VALDIATION (Prevent wrong-day posting)
+    // -------------------------------------------
+    const currentDay = now.getDay(); // 0-6
+    const currentMonthDay = now.getDate(); // 1-31
+
+    // WEEKLY SAFEGUARD
+    if (schedule.frequency === "weekly") {
+      const scheduleDay = parseInt(schedule.dayOfWeek, 10);
+      if (!isNaN(scheduleDay) && scheduleDay !== currentDay) {
+        console.warn(
+          `⚠️ Skipping ${topic.title}: Scheduled for day ${scheduleDay} but today is ${currentDay}. Moving on...`
+        );
+
+        // Fix the schedule by calculating the NEXT correct occurrence
+        const nextDate = calculateNextDate(schedule);
+        await job.update({ scheduledFor: nextDate, status: "pending" });
+        continue;
+      }
+    }
+
+    // MONTHLY SAFEGUARD
+    if (schedule.frequency === "monthly") {
+      const scheduleDate = parseInt(schedule.dayOfMonth, 10);
+      if (!isNaN(scheduleDate) && scheduleDate !== currentMonthDay) {
+        console.warn(
+          `⚠️ Skipping ${topic.title}: Scheduled for date ${scheduleDate} but today is ${currentMonthDay}. Moving on...`
+        );
+
+        const nextDate = calculateNextDate(schedule);
+        await job.update({ scheduledFor: nextDate, status: "pending" });
+        continue;
+      }
+    }
+
+    // -------------------------------------------
     // STEP 1 — Fetch History & Generate Content
     // -------------------------------------------
 
@@ -425,12 +467,6 @@ export async function publishDuePosts() {
       console.log("⚠️ Skipping post — no text generated (likely rate limit)");
       continue;
     }
-
-    // Ensure string content
-    // const content =
-    //   typeof rawContent === "string"
-    //     ? rawContent
-    //     : rawContent.post || JSON.stringify(rawContent);
 
     let content;
 
@@ -519,8 +555,14 @@ function calculateNextDate(schedule) {
       throw new Error("Weekly schedule missing dayOfWeek");
     }
 
+    // FIX: Ensure dayOfWeek is an integer to avoid string concatenation bugs
+    const dayOfWeek = parseInt(schedule.dayOfWeek, 10);
+    if (isNaN(dayOfWeek)) {
+      throw new Error(`Invalid dayOfWeek: ${schedule.dayOfWeek}`);
+    }
+
     const next = new Date();
-    const diff = (schedule.dayOfWeek + 7 - now.getDay()) % 7 || 7;
+    const diff = (dayOfWeek + 7 - now.getDay()) % 7 || 7;
     next.setDate(now.getDate() + diff);
     next.setHours(hours, minutes, 0, 0);
     return next;
