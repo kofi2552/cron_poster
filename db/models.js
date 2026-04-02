@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import sequelize from "./connection.js";
+export { sequelize };
 
 // User model
 export const User = sequelize.define(
@@ -343,7 +344,11 @@ export const ScheduledPost = sequelize.define(
       allowNull: true,
     },
     imageBase64: {
-      type: DataTypes.TEXT, // Supports large base64 strings (Postgres TEXT represents generic unlimited length string)
+      type: DataTypes.TEXT, // Supports large base64 strings
+      allowNull: true,
+    },
+    cloudPublicId: {
+      type: DataTypes.STRING, // To track and delete Cloudinary assets
       allowNull: true,
     },
     createdAt: {
@@ -464,3 +469,165 @@ export const ActivityLog = sequelize.define(
 
 User.hasMany(ActivityLog, { foreignKey: "userId", onDelete: "CASCADE" });
 ActivityLog.belongsTo(User, { foreignKey: "userId" });
+
+export const PaymentTransaction = sequelize.define(
+  "PaymentTransaction",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    reference: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+    },
+    amount: {
+      type: DataTypes.INTEGER, // Smallest currency unit
+      allowNull: false,
+    },
+    status: {
+      type: DataTypes.ENUM("pending", "success", "failed"),
+      defaultValue: "pending",
+    },
+    authorizationUrl: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: true,
+    tableName: "payment_transactions",
+  }
+);
+
+User.hasMany(PaymentTransaction, { foreignKey: "userId", onDelete: "CASCADE" });
+PaymentTransaction.belongsTo(User, { foreignKey: "userId" });
+
+// AppConfig model for structured purchasing settings
+export const AppConfig = sequelize.define(
+    "AppConfig",
+    {
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
+        },
+        premium_amount: {
+            type: DataTypes.INTEGER,
+            defaultValue: 100,
+            allowNull: false,
+        },
+        premium_duration_days: {
+            type: DataTypes.INTEGER,
+            defaultValue: 30,
+            allowNull: false,
+        },
+        updatedAt: {
+            type: DataTypes.DATE,
+            defaultValue: DataTypes.NOW,
+        },
+    },
+    {
+        timestamps: false,
+        tableName: "app_config",
+    }
+);
+
+// CloudinaryConfig model for structured credentials
+export const CloudinaryConfig = sequelize.define(
+  "CloudinaryConfig",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+    },
+    cloud_name: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    api_key: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    api_secret: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: false,
+    tableName: "cloudinary_config",
+  }
+);
+
+// UserAudio model
+export const UserAudio = sequelize.define(
+  "UserAudio",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+    },
+    publicId: {
+      type: DataTypes.STRING,
+      allowNull: false,
+    },
+    secureUrl: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    filename: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: true,
+    tableName: "user_audios",
+  }
+);
+
+User.hasMany(UserAudio, { foreignKey: "userId", onDelete: "CASCADE" });
+UserAudio.belongsTo(User, { foreignKey: "userId" });
+
+

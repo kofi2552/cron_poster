@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cron from "node-cron";
-import { publishDuePosts } from "./cron.js";
+import { publishDuePosts, cleanupExpiredFreeUserData } from "./cron.js";
 import sequelize from "./db/connection.js";
 
 dotenv.config();
@@ -59,9 +59,28 @@ app.get("/run-cron", async (req, res) => {
   res.json({ success: true, message: "Cron executed successfully" });
 });
 
+app.get("/run-cleanup", async (req, res) => {
+  const authHeader = req.headers.authorization;
+
+  if (authHeader !== `Bearer ${process.env.POST_API_TOKEN}`) {
+    return res
+      .status(401)
+      .json({ error: "Unauthorized" });
+  }
+
+  await cleanupExpiredFreeUserData();
+  res.json({ success: true, message: "Cleanup executed successfully" });
+});
+
 cron.schedule("* * * * *", async () => {
-  console.log("⏰ Running cron automatically every minute...");
+  console.log("⏰ Running post-publishing cron every minute...");
   await publishDuePosts();
+});
+
+// Daily cleanup at 1:00 AM
+cron.schedule("0 1 * * *", async () => {
+  console.log("⏰ Running daily 30-day data cleanup...");
+  await cleanupExpiredFreeUserData();
 });
 
 app.listen(PORT, () => {

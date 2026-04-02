@@ -20,11 +20,4 @@ const sequelize = new Sequelize(process.env.DB_URI, {
   logging: console.log,
 });
 
-sequelize
-  .authenticate()
-  .then(() => console.log("Render PostgreSQL connected successfully ✅"))
-  .catch((error) =>
-    console.error("Render PostgreSQL connection error ❌:", error),
-  );
-
 export default sequelize;

@@ -1,7 +1,8 @@
 import fetch from "node-fetch";
-import { User, ScheduledPost, Schedule, Topic } from "./db/models.js";
+import { User, ScheduledPost, Schedule, Topic, SocialAccount, UserAudio } from "./db/models.js";
 import { Op } from "sequelize";
 import { Buffer } from "buffer";
+import { createCompositeImageCloudinary, createTikTokVideo, deleteCloudinaryResources } from "./cloudinary.js";
 
 // const accessToken = process.env.LINKEDIN_ACCESS_TOKEN;
 
@@ -46,6 +47,35 @@ export async function generateLinkedInPost(
                   You are a top-tier LinkedIn ghostwriter known for viral engagement.
                   
                   TOPIC: "${topic}"
+
+                  ${(() => {
+                    const angles = [
+                      "Challenge a widely-held assumption about this topic with a contrarian insight.",
+                      "Open with a surprising statistic or counterintuitive fact related to this topic.",
+                      "Tell a brief, vivid micro-story or scenario that illustrates the core idea.",
+                      "Ask a single, deeply thought-provoking question that reframes how the audience sees this.",
+                      "Start with a bold, uncommon prediction about where this topic is heading.",
+                      "Use an unexpected analogy from nature, sports, or history to explain the idea.",
+                      "Expose a hidden cost or risk that most people ignore about this topic.",
+                      "Frame the post as a lesson learned the hard way — impersonal but grounded.",
+                      "Highlight the gap between what most people believe and what the data actually shows.",
+                      "Open with a one-sentence statement so striking it demands the reader pause.",
+                    ];
+                    const structures = [
+                      "Use short punchy sentences. Build tension. Deliver a sharp conclusion.",
+                      "Use a flowing, narrative style with varying sentence lengths.",
+                      "Lead with the punchline. Explain after. End with a reflection.",
+                      "Use a 3-part structure: provoke → inform → challenge the reader to act.",
+                      "Write like you're mid-conversation with a brilliant peer at a conference.",
+                    ];
+                    return `
+                    MUST FOLLOW THIS ANGLE FOR VARIETY: 
+                    ${angles[Math.floor(Math.random() * angles.length)]}
+                    
+                    MUST FOLLOW THIS STRUCTURE STYLE: 
+                    ${structures[Math.floor(Math.random() * structures.length)]}
+                    `;
+                  })()}
                   
                   PREVIOUSLY PUBLISHED CONTENT ON THIS TOPIC (DO NOT REPEAT THESE ANGLES/IDEAS):
                   ${previousPosts.map((p, i) => `[Post ${i + 1}]: ${p}`).join("\n")}
@@ -394,9 +424,53 @@ export async function publishDuePosts() {
     const topic = schedule.Topic;
     const user = topic.User;
 
-    if (!user?.linkedinAccessToken) {
-      console.log(`⚠️ Skipping ${topic.title} — user has no LinkedIn token.`);
+    const platformName = schedule.platform || "linkedin";
+
+    // Lookup generic SocialAccount first
+    const account = await SocialAccount.findOne({
+      where: { userId: user.id, platform: platformName, isActive: true }
+    });
+
+    let accessToken, platformUserId;
+    if (account) {
+      accessToken = account.accessToken;
+      platformUserId = account.platformUserId;
+    } else if (platformName === "linkedin" && user.linkedinAccessToken) {
+      accessToken = user.linkedinAccessToken;
+      platformUserId = user.linkedinProfileId;
+    }
+
+    if (!accessToken) {
+      console.log(`⚠️ Skipping ${topic.title} — user has no ${platformName} token.`);
       continue;
+    }
+
+    // -------------------------------------------
+    // STEP -1 — Tier Limit Check
+    // -------------------------------------------
+    if (!user.isPremium) {
+      const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const publishedCount7Days = await ScheduledPost.count({
+        where: {
+          userId: user.id,
+          status: "published",
+          publishedAt: { [Op.gte]: oneWeekAgo }
+        }
+      });
+
+      const trialPeriod = 7 * 24 * 60 * 60 * 1000;
+      const isTrial = (now - new Date(user.createdAt)) < trialPeriod;
+      const weeklyLimit = isTrial ? 3 : 2;
+      const tierName = isTrial ? "Trial" : "Free";
+
+      if (publishedCount7Days >= weeklyLimit) {
+        console.log(`⚠️ Skipping ${topic.title} for user ${user.id} — ${tierName} limit reached (${publishedCount7Days}/${weeklyLimit}).`);
+        
+        // Reschedule to tomorrow to check again
+        const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        await job.update({ scheduledFor: tomorrow });
+        continue;
+      }
     }
 
     // -------------------------------------------
@@ -480,37 +554,78 @@ export async function publishDuePosts() {
     }
 
     // -------------------------------------------
-    // STEP 2 — Publish to LinkedIn
+    // STEP 2 — CLOUDINARY COMPOSITOR (If Image was generated)
     // -------------------------------------------
-    const publishResult = await publishToLinkedIn(
-      user?.linkedinAccessToken,
-      content,
-      user.linkedinProfileId,
-      user.email,
-      rawContent.imageBase64 // ✅ REQUIRED
-    );
+    let cloudPublicId = null;
+
+    if (finalImageBase64) {
+      console.log(`[Cloudinary] Base image generated. Extracting hook for compositing...`);
+      try {
+        const hookText = await generateImageHook(content, topic.title);
+        console.log(`[Cloudinary] Hook extracted: "${hookText}"`);
+        const compositeResult = await createCompositeImageCloudinary(finalImageBase64, hookText);
+        finalImageBase64 = compositeResult.compositeBase64;
+        cloudPublicId = compositeResult.publicId;
+        console.log(`[Cloudinary] Composite image successfully branded. ID: ${cloudPublicId}`);
+      } catch (compositorErr) {
+        console.error(`[Cloudinary] Pipeline failed:`, compositorErr.message);
+        console.warn(`[Cloudinary] Falling back to raw AI image without branding.`);
+      }
+    }
+
+    // -------------------------------------------
+    // STEP 3 — Publish to Target Platform
+    // -------------------------------------------
+    let publishResult = { success: false, error: "Platform not supported" };
+
+    if (platformName === "linkedin") {
+      publishResult = await publishToLinkedIn(
+        accessToken,
+        content,
+        platformUserId,
+        user.email,
+        finalImageBase64
+      );
+    } else if (platformName === "tiktok") {
+      publishResult = await publishToTikTok(
+        accessToken,
+        content,
+        platformUserId,
+        finalImageBase64,
+        user.id // Pass the user.id to lookup the Audio Track!
+      );
+    } else {
+      console.log(`❌ Platform ${platformName} publishing not implemented in this cron.`);
+    }
 
     if (!publishResult.success) {
-      console.log(`❌ Failed publishing: ${publishResult.error}`);
+      console.log(`❌ Failed publishing to ${platformName}: ${publishResult.error || publishResult.errorMessage || 'Unknown Error'}`);
 
       await job.update({
         status: "failed",
-        errorMessage: publishResult.error,
+        errorMessage: publishResult.error || publishResult.errorMessage,
         retryCount: job.retryCount + 1,
       });
 
       continue;
     }
 
-    console.log(`✅ Posted to LinkedIn: ${topic.title}`);
+    // Merge Cloudinary ID if platform returned one (IG/FB do)
+    if (publishResult.cloudPublicId) {
+        cloudPublicId = publishResult.cloudPublicId;
+    }
+
+    console.log(`✅ Posted to ${platformName}: ${topic.title}`);
 
     // -------------------------------------------
-    // STEP 3 — Mark this job as published
+    // STEP 4 — Mark this job as published
     // -------------------------------------------
     await job.update({
       status: "published",
       content,
-      linkedinPostId: publishResult.postId,
+      linkedinPostId: platformName === "linkedin" ? publishResult.postId : null,
+      externalPostId: publishResult.postId,
+      cloudPublicId: cloudPublicId,
       publishedAt: now,
     });
 
@@ -535,6 +650,83 @@ export async function publishDuePosts() {
   }
 
   console.log("🎉 Finished processing due posts.");
+}
+
+/**
+ * Automates data retention policy:
+ * - Deletes ScheduledPost & UserAudio older than 30 days for FREE users.
+ * - Exempts PREMIUM users.
+ */
+export async function cleanupExpiredFreeUserData() {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  console.log("🕒 Running daily cleanup for free users (expiry before:", thirtyDaysAgo.toISOString(), ")");
+
+  try {
+    // 1. Identify all free users
+    const freeUsers = await User.findAll({
+        where: { isPremium: false },
+        attributes: ['id']
+    });
+    
+    if (freeUsers.length === 0) {
+        console.log("Cleanup: No free users found.");
+        return;
+    }
+
+    const freeUserIds = freeUsers.map(u => u.id);
+
+    // 2. Find Expired Scheduled Posts for these users
+    const expiredPosts = await ScheduledPost.findAll({
+        where: {
+            userId: { [Op.in]: freeUserIds },
+            createdAt: { [Op.lt]: thirtyDaysAgo }
+        },
+        attributes: ['id', 'cloudPublicId']
+    });
+
+    // 3. Find Expired Audio for these users
+    const expiredAudio = await UserAudio.findOne({
+        where: {
+            userId: { [Op.in]: freeUserIds },
+            createdAt: { [Op.lt]: thirtyDaysAgo }
+        },
+        attributes: ['id', 'publicId']
+    });
+
+    console.log(`Cleanup: Found ${expiredPosts.length} posts and ${expiredAudio ? 1 : 0} audio tracks for deletion.`);
+
+    // 4. Delete Cloudinary Assets for Posts (Images/Videos)
+    const postPublicIds = expiredPosts.map(p => p.cloudPublicId).filter(Boolean);
+    if (postPublicIds.length > 0) {
+        console.log(`Cleanup: Destroying ${postPublicIds.length} post assets in Cloudinary...`);
+        // Cloudinary delete API has 100 limit, but our daily cleanup should be small. 
+        // We do images first, then videos if needed.
+        await deleteCloudinaryResources(postPublicIds, "image");
+        await deleteCloudinaryResources(postPublicIds, "video");
+    }
+
+    // 5. Delete Cloudinary Assets for Audio
+    if (expiredAudio && expiredAudio.publicId) {
+        console.log(`Cleanup: Destroying audio asset ${expiredAudio.publicId} in Cloudinary...`);
+        await deleteCloudinaryResources([expiredAudio.publicId], "video"); // Cloudinary treats audio as video
+    }
+
+    // 6. DB Cleanup
+    const deletedPostsCount = await ScheduledPost.destroy({
+        where: { id: { [Op.in]: expiredPosts.map(p => p.id) } }
+    });
+
+    let deletedAudioCount = 0;
+    if (expiredAudio) {
+        deletedAudioCount = await UserAudio.destroy({
+            where: { id: expiredAudio.id }
+        });
+    }
+
+    console.log(`✅ Cleanup Complete. Records removed: ${deletedPostsCount} posts, ${deletedAudioCount} audio.`);
+  } catch (error) {
+    console.error("🚨 Cleanup Job Failed:", error);
+  }
 }
 
 function calculateNextDate(schedule) {
@@ -709,6 +901,81 @@ function calculateNextDate(schedule) {
 //   PostuserId,
 //   PostUserEmail
 // ) {
+
+/**
+ * Extracts and refines the scroll-stopping hook from a social media post.
+ * Uses AI to validate and polish the hook, ensuring it is always complete,
+ * meaningful, and suitable for a professional social media image overlay.
+ */
+export async function generateImageHook(postContent, topicTitle) {
+  const apiKey = process.env.GROQ_API_KEY;
+
+  try {
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          temperature: 0.6,
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert copywriter for elite professionals and executives.
+              Your job is to extract or craft the single most powerful, scroll-stopping hook sentence from a social media post.
+              This hook will be printed on a branded image card that top professionals share publicly.
+              The stakes are high — the hook must be flawless, professional, and impactful.`,
+            },
+            {
+              role: "user",
+              content: `POST TOPIC: "${topicTitle}"
+
+FULL POST CONTENT:
+---
+${postContent}
+---
+
+INSTRUCTIONS:
+- Find or craft the single best HOOK sentence from this post — the opening line that would stop a professional scrolling their feed.
+- It must be a COMPLETE, grammatically correct sentence or compelling fragment.
+- Strip ALL hashtags.
+- It should feel punchy but professional — suitable for an executive's personal brand image.
+- STRICT word count: between 10 and 12 words. Count carefully.
+- Do NOT add quotes around it.
+- Return ONLY the hook text. Nothing else.`,
+            },
+          ],
+        }),
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || "Groq API Error");
+
+    const hook = data.choices?.[0]?.message?.content?.trim();
+
+    // Sanitize: strip quotes, hashtags, newlines. Enforce word count 10-12.
+    const raw = hook
+      ?.replace(/^"|"$/g, '')
+      ?.replace(/#\S+/g, '')
+      ?.replace(/\n.*/s, '')
+      ?.trim();
+
+    // Enforce 12 word cap — trim if AI returns too many
+    const words = (raw || '').split(/\s+/).filter(Boolean);
+    const capped = words.slice(0, 12).join(' ');
+
+    return capped || topicTitle;
+
+  } catch (error) {
+    console.error("generateImageHook Error:", error.message);
+    return topicTitle;
+  }
+}
 //   console.log("posting content: ", content);
 
 //   try {
@@ -816,6 +1083,88 @@ function calculateNextDate(schedule) {
 //     return { success: false, error: error.message };
 //   }
 // }
+
+export async function publishToTikTok(accessToken, content, platformUserId, imageBase64, dbUserId) {
+  try {
+    if (!imageBase64) {
+      return { success: false, error: "TikTok requires an image/video to publish." };
+    }
+    
+    // 1. Fetch Active Audio
+    const activeAudio = await UserAudio.findOne({
+      where: { userId: dbUserId, isActive: true }
+    });
+
+    if (!activeAudio) {
+      return { success: false, error: "No active audio track found for TikTok. Please configure in Settings." };
+    }
+
+    console.log(`[TikTok Publisher] Using Audio ${activeAudio.publicId}`);
+
+    // 2. Generate MP4 via Cloudinary Compositor Integration
+    const { buffer: videoBuffer, publicId: cloudPublicId } = await createTikTokVideo(imageBase64, activeAudio.publicId);
+    const videoSize = videoBuffer.byteLength;
+    console.log(`[TikTok Publisher] Generated MP4 Size: ${videoSize} bytes`);
+
+    // 3. Init FILE_UPLOAD Session
+    const initPayload = {
+      post_info: {
+        title: content.substring(0, 150),
+        privacy_level: "PUBLIC_TO_EVERYONE",
+        disable_duet: false,
+        disable_comment: false,
+        disable_stitch: false
+      },
+      source_info: {
+        source: "FILE_UPLOAD",
+        video_size: videoSize,
+        chunk_size: videoSize,
+        total_chunk_count: 1
+      }
+    };
+
+    const initRes = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8"
+      },
+      body: JSON.stringify(initPayload)
+    });
+
+    if (!initRes.ok) {
+        throw new Error(`Init Failed: ${await initRes.text()}`);
+    }
+
+    const initData = await initRes.json();
+    if (initData.error && initData.error.code !== "ok") {
+        throw new Error(`API Error: ${initData.error.message}`);
+    }
+
+    const publishId = initData.data.publish_id;
+    const uploadUrl = initData.data.upload_url;
+
+    // 4. Upload raw video Buffer to provided uploadUrl
+    const uploadRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "video/mp4",
+        "Content-Range": `bytes 0-${videoSize - 1}/${videoSize}`,
+        "Content-Length": videoSize.toString()
+      },
+      body: videoBuffer
+    });
+
+    if (!uploadRes.ok) {
+        throw new Error(`Upload Failed: ${await uploadRes.text()}`);
+    }
+
+    return { success: true, postId: publishId, cloudPublicId };
+  } catch (err) {
+    console.error(`🚨 TikTok Error:`, err);
+    return { success: false, error: err.message };
+  }
+}
 
 // -------------------------------------------
 // CRON JOB: Publish all due scheduled posts
