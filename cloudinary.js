@@ -39,8 +39,8 @@ export async function createCompositeImageCloudinary(bgBase64, textHook) {
     }
 
     const baseUploadResult = await cloudinary.uploader.upload(
-      b64Str,
-      { folder: 'linkedin-poster' }
+        b64Str,
+        { folder: 'linkedin-poster' }
     );
     const { public_id: publicId } = baseUploadResult;
 
@@ -61,7 +61,7 @@ export async function createCompositeImageCloudinary(bgBase64, textHook) {
         `c_fit,co_rgb:000000,l_text:Arial_80_normal_left:${encodedText},w_750`,
         `fl_layer_apply,fl_no_overflow,g_center`,
         // Signature watermark — full 1080x1080 transparent overlay, bottom-right embedded
-        `l_Sign_lcbddw/c_scale,fl_relative,w_1.0`,
+        `l_SignMark_ioiuon/c_scale,fl_relative,w_1.0`,
         `fl_layer_apply,g_center`,
     ].join('/');
 
@@ -70,15 +70,15 @@ export async function createCompositeImageCloudinary(bgBase64, textHook) {
     // 2. Fetch the newly composited image
     const response = await fetch(compositeUrl);
     if (!response.ok) {
-      throw new Error(`Failed to fetch composite from Cloudinary. Status: ${response.status}`);
+        throw new Error(`Failed to fetch composite from Cloudinary. Status: ${response.status}`);
     }
 
     // 3. Convert downloaded buffer into base64
     const buffer = await response.arrayBuffer();
     const compositeBase64 = Buffer.from(buffer).toString('base64');
 
-    return { 
-        compositeBase64, 
+    return {
+        compositeBase64,
         publicId // Return the background image ID for eventual cleanup
     };
 }
@@ -91,7 +91,7 @@ export async function createTikTokVideo(imagePublicIdOrBase64, audioPublicId) {
     const { cloudinary, cloud_name } = await getCloudinary();
 
     let imagePublicId = imagePublicIdOrBase64;
-    
+
     // If it's pure base64 without data type, format it
     if (!imagePublicIdOrBase64.includes('/') && imagePublicIdOrBase64.length > 500) {
         let b64Str = imagePublicIdOrBase64;
@@ -104,7 +104,7 @@ export async function createTikTokVideo(imagePublicIdOrBase64, audioPublicId) {
     }
 
     const cleanImageLayerId = imagePublicId.replace(/\//g, ':');
-    
+
     // fl_layer_apply overlays the image over the audio.
     // eo_50.0 limits the entire video duration to 50 seconds.
     // We scale to fit into 1080x1920 or standard 1080x1080 depending on the composite format.
@@ -118,11 +118,11 @@ export async function createTikTokVideo(imagePublicIdOrBase64, audioPublicId) {
 
     // Combine them: audio runs as the base video, image lies on top statically for the exact length.
     const videoUrl = `https://res.cloudinary.com/${cloud_name}/video/upload/${transformations}/${cleanAudioId}.mp4`;
-    
+
     console.log("TikTok Video Engine: Generating MP4 URL:", videoUrl);
-    
+
     const res = await fetch(videoUrl);
-    
+
     if (!res.ok) {
         const errDump = await res.text();
         throw new Error(`Failed to generate MP4 Video via Cloudinary. Status: ${res.status}. Data: ${errDump}`);
@@ -141,9 +141,9 @@ export async function createTikTokVideo(imagePublicIdOrBase64, audioPublicId) {
  */
 export async function deleteCloudinaryResources(publicIds, resourceType = "image") {
     if (!publicIds || publicIds.length === 0) return;
-    
+
     const { cloudinary } = await getCloudinary();
-    
+
     return new Promise((resolve, reject) => {
         cloudinary.api.delete_resources(publicIds, { resource_type: resourceType }, (error, result) => {
             if (error) return reject(error);
