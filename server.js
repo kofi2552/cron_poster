@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cron from "node-cron";
-import { publishDuePosts, cleanupExpiredFreeUserData } from "./cron.js";
+import { publishDuePosts, cleanupExpiredFreeUserData, refreshFacebookTokens } from "./cron.js";
 import sequelize from "./db/connection.js";
 
 dotenv.config();
@@ -17,6 +17,7 @@ app.use(
       "https://postpilot.onl",
       "https://postpilot.tudlin.com",
       "https://postpilot-sage.vercel.app",
+      "https://localhost:3000",
       "http://localhost:3000",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -77,10 +78,11 @@ cron.schedule("* * * * *", async () => {
   await publishDuePosts();
 });
 
-// Daily cleanup at 1:00 AM
+// Daily cleanup and token refresh at 1:00 AM
 cron.schedule("0 1 * * *", async () => {
-  console.log("⏰ Running daily 30-day data cleanup...");
+  console.log("⏰ Running daily 30-day data cleanup and token refresh...");
   await cleanupExpiredFreeUserData();
+  await refreshFacebookTokens();
 });
 
 app.listen(PORT, () => {

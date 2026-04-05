@@ -108,6 +108,8 @@ export const SocialAccount = sequelize.define(
       type: DataTypes.ENUM(
         "linkedin",
         "facebook",
+        "facebook-page",
+        "facebook-user",
         "twitter",
         "tiktok",
         "instagram"
@@ -231,6 +233,8 @@ export const Schedule = sequelize.define(
       type: DataTypes.ENUM(
         "linkedin",
         "facebook",
+        "facebook-page",
+        "facebook-user",
         "twitter",
         "tiktok",
         "instagram"
@@ -325,11 +329,17 @@ export const ScheduledPost = sequelize.define(
       type: DataTypes.ENUM(
         "linkedin",
         "facebook",
+        "facebook-page",
+        "facebook-user",
         "twitter",
         "tiktok",
         "instagram"
       ),
       defaultValue: "linkedin",
+    },
+    platformUserId: {
+      type: DataTypes.STRING,
+      allowNull: true,
     },
     externalPostId: {
       type: DataTypes.STRING,
@@ -630,4 +640,70 @@ export const UserAudio = sequelize.define(
 User.hasMany(UserAudio, { foreignKey: "userId", onDelete: "CASCADE" });
 UserAudio.belongsTo(User, { foreignKey: "userId" });
 
+// AppContext model — single-row admin-managed compliance context
+export const AppContext = sequelize.define(
+  "AppContext",
+  {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+    },
+    fullText: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    uploadedBy: {
+      type: DataTypes.UUID,
+      allowNull: true,
+    },
+    updatedAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: false,
+    tableName: "app_context",
+  }
+);
 
+// UserMemory model — AI-learned + manually-added user writing style facts
+export const UserMemory = sequelize.define(
+  "UserMemory",
+  {
+    id: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      primaryKey: true,
+    },
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: { model: User, key: "id" },
+    },
+    memoryType: {
+      type: DataTypes.ENUM("tone", "prohibited_word", "core_belief", "company_fact", "auto"),
+      defaultValue: "tone",
+    },
+    content: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+    },
+    createdAt: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: true,
+    tableName: "user_memories",
+  }
+);
+
+User.hasMany(UserMemory, { foreignKey: "userId", onDelete: "CASCADE" });
+UserMemory.belongsTo(User, { foreignKey: "userId" });

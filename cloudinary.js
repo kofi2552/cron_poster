@@ -137,6 +137,34 @@ export async function createTikTokVideo(imagePublicIdOrBase64, audioPublicId) {
 }
 
 /**
+ * Uploads a raw image to Cloudinary (used by Facebook and Instagram to host images)
+ */
+export async function uploadToCloudinary(imageBase64) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const { cloudinary } = await getCloudinary();
+            
+            let b64Str = imageBase64;
+            if (!b64Str.startsWith('data:image')) {
+                b64Str = `data:image/png;base64,${b64Str}`;
+            }
+
+            cloudinary.uploader.upload(b64Str, {
+                folder: 'linkedin-poster',
+                width: 1080,
+                height: 1080,
+                crop: 'fill'
+            }, (error, result) => {
+                if (error) return reject(error);
+                resolve(result); // returns secure_url and public_id
+            });
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+/**
  * Deletes multiple resources from Cloudinary
  */
 export async function deleteCloudinaryResources(publicIds, resourceType = "image") {
