@@ -974,6 +974,43 @@ export async function publishToInstagram(accessToken, content, platformUserId, i
     const creationId = containerData.id;
     console.log("[publishToInstagram] Media Container Created. ID:", creationId);
 
+    // 2.5 Poll Container Status to ensure Meta has finished processing it
+    let status = "IN_PROGRESS";
+    let attempts = 0;
+    const maxAttempts = 15;
+    const delayMs = 3000;
+
+    while (attempts < maxAttempts) {
+      console.log(`[publishToInstagram] Checking container status, attempt ${attempts + 1}/${maxAttempts}...`);
+      const statusRes = await fetch(`https://graph.facebook.com/v19.0/${creationId}?fields=status_code,error_user_title,error_user_msg&access_token=${accessToken}`);
+      const statusData = await statusRes.json();
+      
+      if (statusRes.ok && statusData.status_code) {
+        status = statusData.status_code;
+        console.log(`[publishToInstagram] Container status: ${status}`);
+        
+        if (status === "FINISHED" || status === "PUBLISHED") {
+          break;
+        } else if (status === "ERROR") {
+          const errMsg = statusData.error_user_msg || statusData.error_user_title || "Container processing failed";
+          return { success: false, error: `Instagram Container Processing Error: ${errMsg}` };
+        } else if (status === "EXPIRED") {
+          return { success: false, error: "Instagram Container processing expired." };
+        }
+      } else {
+        console.warn(`[publishToInstagram] Status check failed or returned error:`, statusData);
+      }
+      
+      attempts++;
+      if (attempts < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+
+    if (status !== "FINISHED" && status !== "PUBLISHED") {
+      return { success: false, error: `Instagram Container not ready. Final status: ${status}` };
+    }
+
     // 3. API Call to Publish the Container
     const publishUrl = `https://graph.facebook.com/v19.0/${platformUserId}/media_publish`;
     console.log(`[publishToInstagram] Publishing Container: ${publishUrl}`);

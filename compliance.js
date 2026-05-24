@@ -5,6 +5,28 @@
 import fetch from "node-fetch";
 import { AppContext, UserMemory } from "./db/models.js";
 
+async function fetchWithRetry(url, options, maxRetries = 3, initialDelay = 2000) {
+  let delay = initialDelay;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.status === 429) {
+        console.warn(`[fetchWithRetry] 429 Too Many Requests on attempt ${attempt}. Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+        continue;
+      }
+      return response;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      console.warn(`[fetchWithRetry] Network error on attempt ${attempt}: ${err.message}. Retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      delay *= 2;
+    }
+  }
+  return fetch(url, options);
+}
+
 /**
  * Verifies a post against the admin app context and user memories.
  * Two-pass: check → rewrite if needed → re-check.
@@ -23,7 +45,7 @@ ${userMemories.length > 0 ? `USER-SPECIFIC STYLE MEMORIES:\n${userMemories.map(m
 `.trim();
 
   async function checkPass(contentToVerify) {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -94,7 +116,7 @@ export async function extractUserMemory(userInputText, existingMemories = []) {
     : "None yet";
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const response = await fetchWithRetry("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
