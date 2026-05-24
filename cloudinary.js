@@ -46,23 +46,24 @@ export async function createCompositeImageCloudinary(bgBase64, textHook) {
 
     const layerId = publicId.replace(/\//g, ':');
 
-    // Sanitize the hook text for Cloudinary overlay
+    // Sanitize the hook text for Cloudinary overlay and apply 70-character word-boundary truncation
     const rawText = (textHook || "").replace(/^"|"$/g, '').trim();
+    let truncatedText = rawText;
+    if (rawText.length > 70) {
+        let sliced = rawText.slice(0, 70);
+        const lastSpace = sliced.lastIndexOf(' ');
+        if (lastSpace > 0) {
+            sliced = sliced.slice(0, lastSpace);
+        }
+        truncatedText = sliced.trim().replace(/[,.;:!?]+$/, '') + "....";
+    }
     // Use double escape for Cloudinary text rendering
-    const encodedText = encodeURIComponent(encodeURIComponent(rawText));
+    const encodedText = encodeURIComponent(encodeURIComponent(truncatedText));
 
     // Identical pipeline to Next.js
     const transformations = [
-        `l_${layerId}/c_scale,fl_relative,w_1.0`,
-        `fl_layer_apply,fl_no_overflow,g_center,x_-2,y_-2`,
-        `e_blur:1500`,
-        `l_white_overlay_v80pti/c_scale,fl_relative,o_94,w_0.87`,
-        `fl_layer_apply,fl_no_overflow,g_center,x_-1,y_-1`,
-        `c_fit,co_rgb:000000,l_text:Arial_80_normal_left:${encodedText},w_750`,
+        `c_fit,co_rgb:000000,l_text:Bricolage Grotesque@google_95_700_left:${encodedText},w_750`,
         `fl_layer_apply,fl_no_overflow,g_center`,
-        // Signature watermark — full 1080x1080 transparent overlay, bottom-right embedded
-        `l_SignMark_ioiuon/c_scale,fl_relative,w_1.0`,
-        `fl_layer_apply,g_center`,
     ].join('/');
 
     const compositeUrl = `https://res.cloudinary.com/${cloud_name}/image/upload/${transformations}/${publicId}`;
@@ -143,7 +144,7 @@ export async function uploadToCloudinary(imageBase64) {
     return new Promise(async (resolve, reject) => {
         try {
             const { cloudinary } = await getCloudinary();
-            
+
             let b64Str = imageBase64;
             if (!b64Str.startsWith('data:image')) {
                 b64Str = `data:image/png;base64,${b64Str}`;

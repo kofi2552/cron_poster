@@ -4,6 +4,7 @@ import { Op } from "sequelize";
 import { Buffer } from "buffer";
 import { createCompositeImageCloudinary, uploadToCloudinary } from "./cloudinary.js";
 import { runCompliancePipeline } from "./compliance.js";
+import { generateImage } from "./image.js";
 
 
 
@@ -15,7 +16,8 @@ export async function generateSocialMediaPost(
   includeImage = false,
   userPersona,
   userMemories = [],
-  previousPosts = []
+  previousPosts = [],
+  useAiImage = false
 ) {
   const textApiKey = process.env.GROQ_API_KEY;
   const imageApiKey = process.env.CF_IMAGE_GENERATION_API_KEY;
@@ -131,25 +133,8 @@ export async function generateSocialMediaPost(
   // --------------------------------------------------
   if (includeImage) {
     try {
-      const imagePrompt = `Professional background image creative for the "${topic}". 
-            KEEP IT minimal, Clean, modern. WARNING: NO TEXT IN THE IMAGE!, NO BRANDS LOGOS IN THE IMAGE!, NO FACES IN THE IMAGE.`;
-
-      const res = await fetch("https://image-api.dev-kyde.workers.dev/", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${imageApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ prompt: imagePrompt }),
-      });
-
-      if (!res.ok) {
-        console.warn("⚠️ Image API responded with:", res.status);
-        imageBase64 = null;
-      } else {
-        const arrayBuffer = await res.arrayBuffer();
-        imageBase64 = Buffer.from(arrayBuffer).toString("base64");
-      }
+      const imagePrompt = `Professional background image creative for the "${topic}". KEEP IT minimal, Clean, modern. WARNING: NO TEXT IN THE IMAGE!, NO BRANDS LOGOS IN THE IMAGE!, NO FACES IN THE IMAGE.`;
+      imageBase64 = await generateImage(imagePrompt, useAiImage);
     } catch (err) {
       console.warn("⚠️ Image generation failed (ignored):", err.message);
       imageBase64 = null;
@@ -211,27 +196,27 @@ export async function generateImageHook(postContent, topicTitle) {
           messages: [
             {
               role: "system",
-              content: `You are an expert copywriter for elite professionals and executives.
-              Your job is to extract or craft the single most powerful, scroll-stopping hook sentence from a social media post.
-              This hook will be printed on a branded image card that top professionals share publicly.
-              The stakes are high — the hook must be flawless, professional, and impactful.`,
+              content: `You are an expert executive copywriter and editorial director.
+              Your job is to craft an elite, scroll-stopping visual teaser hook for a branded image card shared on social feeds.
+              The stakes are high — the hook must feel incredibly premium, professional, and visually perfectly proportioned.`,
             },
             {
               role: "user",
               content: `POST TOPIC: "${topicTitle}"
-
+              
 FULL POST CONTENT:
 ---
 ${postContent}
 ---
 
 INSTRUCTIONS:
-- Find or craft the single best HOOK sentence from this post — the opening line that would stop a professional scrolling their feed.
-- It must be a COMPLETE, grammatically correct sentence or compelling fragment.
-- Strip ALL hashtags.
-- It should feel punchy but professional — suitable for an executive's personal brand image.
-- STRICT word count: between 10 and 12 words. Count carefully.
-- Do NOT add quotes around it.
+- Craft a completely custom, newly written teaser hook based on the core thesis of this post.
+- CRITICAL: It must NOT be a direct copy of any sentence or opening line inside the FULL POST CONTENT. Write a brand-new, complementary statement.
+- The hook must act as a powerful teaser that sparks strong curiosity and directly drives the reader to open and read the main post text content itself.
+- It must be a complete, grammatically correct professional statement or a highly polished, catchy thought.
+- STRICT word count: between 8 and 12 words. This leaves beautiful breathing room for the minimalist, textured margins of the visual.
+- Avoid generic marketing buzzwords or cheap clickbait. Keep it premium, deep, and intellectual.
+- Strip ALL hashtags and do NOT add quotes around it.
 - Return ONLY the hook text. Nothing else.`,
             },
           ],
@@ -427,7 +412,8 @@ export async function publishDuePosts() {
       topic.includeImage === true,
       user,
       user.UserMemories || [],
-      previousContentList
+      previousContentList,
+      topic.useAiImage === true
     );
 
     if (!rawContent || !rawContent.post) {

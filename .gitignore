@@ -4,3 +4,4 @@ node_modules
 reproduce_issue.js
 test_fix.js
 scripts
+test-composite.js
