@@ -248,6 +248,34 @@ INSTRUCTIONS:
   }
 }
 
+async function refreshLinkedInToken(refreshToken) {
+  const clientId = process.env.LINKEDIN_CLIENT_ID;
+  const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+  
+  const tokenResponse = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }).toString(),
+  });
+
+  if (!tokenResponse.ok) {
+    const errorText = await tokenResponse.text();
+    throw new Error(`Failed to refresh LinkedIn token: ${errorText}`);
+  }
+
+  const tokenData = await tokenResponse.json();
+  return {
+    accessToken: tokenData.access_token,
+    refreshToken: tokenData.refresh_token || refreshToken,
+    expiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
+  };
+}
+
 // PUBLISH THE DUE POSTS
 export async function publishDuePosts() {
   const now = new Date();
@@ -292,23 +320,82 @@ export async function publishDuePosts() {
 
     const platformName = schedule.platform;
 
+    // Platform-agnostic token retrieval
+    let account = await SocialAccount.findOne({
+      where: { userId: user.id, platform: platformName, isActive: true }
+    });
+
     let accessToken = null;
+    let refreshToken = null;
+    let expiresAt = null;
     let platformUserId = null;
 
-    // Platform-agnostic token retrieval
-    if (platformName !== "linkedin") {
-      const account = await SocialAccount.findOne({
-        where: { userId: user.id, platform: platformName, isActive: true }
-      });
-      if (account) {
-        accessToken = account.accessToken;
-        platformUserId = account.platformUserId;
-      }
-    } else {
+    if (account) {
+      accessToken = account.accessToken;
+      refreshToken = account.refreshToken;
+      expiresAt = account.tokenExpiresAt;
+      platformUserId = account.platformUserId;
+    } else if (platformName === "linkedin") {
       // Legacy fallback for linkedin directly on the User model
       if (user?.linkedinAccessToken) {
         accessToken = user.linkedinAccessToken;
+        expiresAt = user.linkedinTokenExpiresAt;
         platformUserId = user.linkedinProfileId;
+      }
+    }
+
+    if (accessToken) {
+      const nowTime = new Date();
+      const bufferMs = 5 * 60 * 1000;
+      const isExpired = expiresAt && (new Date(expiresAt).getTime() - bufferMs < nowTime.getTime());
+
+      if (isExpired) {
+        console.log(`[test-cron] Token for platform ${platformName} of user ${user.id} is expired or expiring soon. Attempting refresh...`);
+        if (platformName === "linkedin" && refreshToken) {
+          try {
+            const refreshResult = await refreshLinkedInToken(refreshToken);
+            
+            accessToken = refreshResult.accessToken;
+            expiresAt = refreshResult.expiresAt;
+            refreshToken = refreshResult.refreshToken;
+
+            // Update database SocialAccount record
+            if (account) {
+              await account.update({
+                accessToken: refreshResult.accessToken,
+                refreshToken: refreshResult.refreshToken,
+                tokenExpiresAt: refreshResult.expiresAt,
+              });
+            }
+
+            // Sync legacy User model fields
+            await User.update({
+              linkedinAccessToken: refreshResult.accessToken,
+              linkedinTokenExpiresAt: refreshResult.expiresAt,
+            }, {
+              where: { id: user.id }
+            });
+
+            console.log(`[test-cron] Successfully refreshed LinkedIn token for user ${user.id}`);
+          } catch (refreshErr) {
+            console.error(`[test-cron] Failed to refresh LinkedIn token for user ${user.id}:`, refreshErr.message);
+            accessToken = null; // force failure
+          }
+        } else {
+          // For other platforms, we don't have automatic refresh implemented in this helper, so force failure
+          console.warn(`[test-cron] Token expired and cannot be refreshed for platform ${platformName}.`);
+          accessToken = null;
+        }
+
+        if (!accessToken) {
+          // Mark connection as inactive
+          if (account) {
+            await account.update({ isActive: false });
+          }
+          if (platformName === "linkedin") {
+            await User.update({ linkedinAccessToken: null }, { where: { id: user.id } });
+          }
+        }
       }
     }
 
