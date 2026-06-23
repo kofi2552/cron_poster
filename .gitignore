@@ -5,3 +5,4 @@ reproduce_issue.js
 test_fix.js
 scripts
 test-composite.js
+generate-test-image.js

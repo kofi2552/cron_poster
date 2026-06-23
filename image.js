@@ -50,7 +50,8 @@ function hexToRgba(hex, alpha) {
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    // Scale down alpha to keep mesh color glows subtle and dark-themed
+    return `rgba(${r}, ${g}, ${b}, ${alpha * 0.45})`;
 }
 
 // Helper to deterministic hash strings to select gradient preset index
@@ -77,8 +78,8 @@ export async function generateGradientImage(prompt) {
     const canvas = createCanvas(1080, 1080);
     const ctx = canvas.getContext('2d');
 
-    // 1. Fill base canvas with clean, soft off-white
-    ctx.fillStyle = "#fafafa";
+    // 1. Fill base canvas with clean, deep rich slate-black
+    ctx.fillStyle = "#030712";
     ctx.fillRect(0, 0, 1080, 1080);
 
     const themeColor = preset.color;
@@ -127,14 +128,14 @@ export async function generateGradientImage(prompt) {
 
         // Shape with side highlights
         const leftHighlight = ctx.createRadialGradient(rand(-250, -100), y2, 0, rand(-250, -100), y2, rand(700, 850));
-        leftHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        leftHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        leftHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        leftHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = leftHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
 
         const rightHighlight = ctx.createRadialGradient(rand(1180, 1330), y2, 0, rand(1180, 1330), y2, rand(700, 850));
-        rightHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        rightHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        rightHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        rightHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = rightHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
 
@@ -174,14 +175,14 @@ export async function generateGradientImage(prompt) {
 
         // Shape from opposing diagonal corners (Top-Right and Bottom-Left)
         const trHighlight = ctx.createRadialGradient(rand(1100, 1250), rand(-150, 0), 0, rand(1100, 1250), rand(-150, 0), rand(750, 900));
-        trHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        trHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        trHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        trHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = trHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
 
         const blHighlight = ctx.createRadialGradient(rand(-150, 0), rand(1100, 1250), 0, rand(-150, 0), rand(1100, 1250), rand(750, 900));
-        blHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        blHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        blHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        blHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = blHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
 
@@ -221,14 +222,14 @@ export async function generateGradientImage(prompt) {
 
         // Shape from opposing diagonal corners (Top-Left and Bottom-Right)
         const tlHighlight = ctx.createRadialGradient(rand(-150, 0), rand(-150, 0), 0, rand(-150, 0), rand(-150, 0), rand(750, 900));
-        tlHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        tlHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        tlHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        tlHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = tlHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
 
         const brHighlight = ctx.createRadialGradient(rand(1100, 1250), rand(1100, 1250), 0, rand(1100, 1250), rand(1100, 1250), rand(750, 900));
-        brHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        brHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        brHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        brHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = brHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
 
@@ -268,17 +269,24 @@ export async function generateGradientImage(prompt) {
 
         // Shape with top and bottom white highlights
         const topHighlight = ctx.createRadialGradient(x2, rand(-250, -100), 0, x2, rand(-250, -100), rand(700, 850));
-        topHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        topHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        topHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        topHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = topHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
 
         const btmHighlight = ctx.createRadialGradient(x2, rand(1180, 1330), 0, x2, rand(1180, 1330), rand(700, 850));
-        btmHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
-        btmHighlight.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        btmHighlight.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+        btmHighlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = btmHighlight;
         ctx.fillRect(0, 0, 1080, 1080);
     }
+
+    // 3.5 Draw a premium dark overlay vignette to keep the background very dark and premium
+    const darkVignette = ctx.createRadialGradient(540, 540, 200, 540, 540, 750);
+    darkVignette.addColorStop(0, 'rgba(3, 7, 18, 0.15)');
+    darkVignette.addColorStop(1, 'rgba(3, 7, 18, 0.88)');
+    ctx.fillStyle = darkVignette;
+    ctx.fillRect(0, 0, 1080, 1080);
 
     // 4. Apply a consistent sand-like monochromatic digital noise grain texture (increased intensity to 32!)
     const imgData = ctx.getImageData(0, 0, 1080, 1080);
@@ -337,18 +345,18 @@ export async function polishAiImage(rawBase64, prompt) {
         ctx.fillRect(0, 0, 1080, 1080);
         ctx.restore();
         
-        // 4. Draw a beautiful soft white ambient radial vignette (maintains light composition and high-end feel)
+        // 4. Draw a beautiful deep dark ambient radial vignette
         ctx.save();
         const vignette = ctx.createRadialGradient(540, 540, 360, 540, 540, 800);
-        vignette.addColorStop(0, 'rgba(255, 255, 255, 0)');
-        vignette.addColorStop(1, 'rgba(255, 255, 255, 0.35)');
+        vignette.addColorStop(0, 'rgba(11, 15, 25, 0)');
+        vignette.addColorStop(1, 'rgba(11, 15, 25, 0.65)');
         ctx.fillStyle = vignette;
         ctx.fillRect(0, 0, 1080, 1080);
         ctx.restore();
 
-        // 5. Sophisticated tech-editorial grid overlay (adds premium structured design feeling - dark slate lines for light bg)
+        // 5. Sophisticated tech-editorial grid overlay (adds premium structured design feeling - light lines for dark bg)
         ctx.save();
-        ctx.strokeStyle = 'rgba(15, 23, 42, 0.04)';
+        ctx.strokeStyle = 'rgba(248, 250, 252, 0.08)';
         ctx.lineWidth = 1;
         for (let i = 120; i < 1080; i += 120) {
             // Vertical gridline
@@ -395,7 +403,7 @@ export async function generateImage(prompt, useAiImage = false) {
     try {
         console.log("Image Pipeline (test-cron): Triggering Cloudflare workers image generator...");
         // Instruct the Cloudflare API to generate a beautiful custom wavy color aura background with colors matching the topic theme
-        const styledPrompt = `A high-end, minimalist, high-resolution background with a central vertical column of diffused, grainy color aura merging into soft white light, with strong digital noise and sand-like grain texture, atmospheric airy calm aesthetic, color theme inspired specifically by: "${prompt}"`;
+        const styledPrompt = `A high-end, minimalist, high-resolution dark mode background with a central vertical column of diffused, grainy color aura merging into dark shadows and charcoal space, with strong digital noise and sand-like grain texture, premium deep dark aesthetic, color theme inspired specifically by: "${prompt}"`;
         
         const res = await fetch("https://image-api.dev-kyde.workers.dev/", {
             method: "POST",

@@ -62,7 +62,7 @@ export async function createCompositeImageCloudinary(bgBase64, textHook) {
 
     // Identical pipeline to Next.js
     const transformations = [
-        `c_fit,co_rgb:000000,l_text:Bricolage Grotesque@google_95_700_left:${encodedText},w_750`,
+        `c_fit,co_rgb:ffffff,l_text:Bricolage Grotesque@google_95_700_left:${encodedText},w_750`,
         `fl_layer_apply,fl_no_overflow,g_center`,
     ].join('/');
 
