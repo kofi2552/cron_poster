@@ -1,5 +1,5 @@
 import fetch from "node-fetch";
-import { User, ScheduledPost, Schedule, Topic, SocialAccount, UserAudio, UserMemory } from "./db/models.js";
+import { User, ScheduledPost, Schedule, Topic, SocialAccount, UserAudio, UserMemory, DailyContext, AppContext } from "./db/models.js";
 import { Op } from "sequelize";
 import { Buffer } from "buffer";
 import { createCompositeImageCloudinary, uploadToCloudinary } from "./cloudinary.js";
@@ -17,7 +17,8 @@ export async function generateSocialMediaPost(
   userPersona,
   userMemories = [],
   previousPosts = [],
-  useAiImage = false
+  useAiImage = false,
+  dailyContext = null
 ) {
   const textApiKey = process.env.GROQ_API_KEY;
   const imageApiKey = process.env.CF_IMAGE_GENERATION_API_KEY;
@@ -74,6 +75,11 @@ export async function generateSocialMediaPost(
                     
                   3. SCHEDULE / TOPIC SPECIFIC DESCRIPTION (The user's direct instructions for this post):
                     - ${description || "Write a highly engaging, professional viral social media post on this topic."}
+                  ${dailyContext ? `
+                  4. REAL USER DAILY CONTEXT (Ground the post in these real, raw experiences/details from the user's day):
+                    - ${dailyContext}
+                    * CRITICAL: Use these real daily details to make the post authentic, human, and grounded in real-life events. Avoid generic scenarios. Make the post feel like a personal reflection or real insight based on this context.
+                    * Override rule: When this real context is present, you may write from the author's first-person perspective using personal pronouns (I, me, my) to make the personal narrative authentic, but keep it professional. Let the story flow naturally.` : ""}
                   --------------------------
                   
                   CRITICAL INSTRUCTIONS ASIDE THE TONE:
@@ -90,12 +96,12 @@ export async function generateSocialMediaPost(
                   5. **FORMAT**: No emojis, No special characters. 2-3 hashtags at the end.
 
                   WARNING!  WARNING!  WARNING!  WARNING!  WARNING!
-                  6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
-                   6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
-                    6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
-                     6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
-                      6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
-                       6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME!
+                  6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME! (UNLESS a REAL USER DAILY CONTEXT is provided above, in which case write in the first-person using I/me/my to sound authentic).
+                   6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME! (UNLESS a REAL USER DAILY CONTEXT is provided above, in which case write in the first-person using I/me/my to sound authentic).
+                    6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME! (UNLESS a REAL USER DAILY CONTEXT is provided above, in which case write in the first-person using I/me/my to sound authentic).
+                     6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME! (UNLESS a REAL USER DAILY CONTEXT is provided above, in which case write in the first-person using I/me/my to sound authentic).
+                      6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME! (UNLESS a REAL USER DAILY CONTEXT is provided above, in which case write in the first-person using I/me/my to sound authentic).
+                       6. DO NOT USE MY PERSONAL PRONOUN!, DO NOT REFER TO ME! (UNLESS a REAL USER DAILY CONTEXT is provided above, in which case write in the first-person using I/me/my to sound authentic).
                         
 
                   
@@ -473,58 +479,97 @@ export async function publishDuePosts() {
     }
 
     // -------------------------------------------
-    // STEP 1 — Fetch History & Generate Content
+    // STEP 1 — Fetch or Generate Content
     // -------------------------------------------
+    let content = job.content;
+    let imageHookText = job.imageHook;
+    let cloudPublicId = null;
+    let imageBase64 = job.imageBase64 || null;
 
-    // Fetch last 3 posts for context to avoid repetition
-    const previousPosts = await ScheduledPost.findAll({
-      where: {
-        topicId: topic.id,
-        status: "published",
-        content: { [Op.ne]: "" }, // Ensure content exists
-      },
-      order: [["publishedAt", "DESC"]],
-      limit: 6,
-      attributes: ["content"],
-    });
-
-    const previousContentList = previousPosts.map((p) => p.content);
-
-    let rawContent;
-
-    rawContent = await generateSocialMediaPost(
-      topic.title,
-      topic.postLength,
-      topic.description,
-      topic.includeImage === true,
-      user,
-      user.UserMemories || [],
-      previousContentList,
-      topic.useAiImage === true
-    );
-
-    if (!rawContent || !rawContent.post) {
-      console.log("⚠️ Skipping post — no text generated (likely rate limit)");
-      continue;
-    }
-    
-    let content = rawContent.post;
-
-    // --- COMPLIANCE VERIFICATION LAYER ---
-    console.log(`🛡️ Running compliance verification for ${topic.title}...`);
-    const complianceData = await runCompliancePipeline(content, user.id);
-    if (!complianceData.result.success) {
-      console.log(`❌ Compliance completely rejected post: ${topic.title}`);
-      await job.update({
-        status: "failed",
-        errorMessage: `Compliance Violation: ${complianceData.result.error}`,
-        retryCount: job.retryCount + 1,
+    if (!content) {
+      console.log(`[test-cron] Post content is blank. Generating content as fallback...`);
+      // Fetch the latest daily context if available
+      const dContext = await DailyContext.findOne({
+        where: { userId: user.id, topicId: topic.id },
+        order: [["createdAt", "DESC"]],
       });
-      continue;
+      const dailyContext = dContext?.content || null;
+
+      // Fetch last 3 posts for context to avoid repetition
+      const previousPosts = await ScheduledPost.findAll({
+        where: {
+          topicId: topic.id,
+          status: "published",
+          content: { [Op.ne]: "" }, // Ensure content exists
+        },
+        order: [["publishedAt", "DESC"]],
+        limit: 6,
+        attributes: ["content"],
+      });
+
+      const previousContentList = previousPosts.map((p) => p.content);
+
+      let rawContent = await generateSocialMediaPost(
+        topic.title,
+        topic.postLength,
+        topic.description,
+        topic.includeImage === true,
+        user,
+        user.UserMemories || [],
+        previousContentList,
+        topic.useAiImage === true,
+        dailyContext
+      );
+
+      if (!rawContent || !rawContent.post) {
+        console.log("⚠️ Skipping post — no text generated (likely rate limit)");
+        continue;
+      }
+      content = rawContent.post;
+      imageHookText = await generateImageHook(content, topic.title);
+
+      // --- COMPLIANCE VERIFICATION LAYER ---
+      console.log(`🛡️ Running compliance verification for ${topic.title}...`);
+      const complianceData = await runCompliancePipeline(content, user.id);
+      if (!complianceData.result.success) {
+        console.log(`❌ Compliance completely rejected post: ${topic.title}`);
+        await job.update({
+          status: "failed",
+          errorMessage: `Compliance Violation: ${complianceData.result.error}`,
+          retryCount: job.retryCount + 1,
+        });
+        continue;
+      }
+      content = complianceData.result.finalContent;
+      console.log(`✅ Compliance Approved content for "${topic.title}"`);
     }
-    content = complianceData.result.finalContent;
-    console.log(`✅ Compliance Approved content for "${topic.title}"`);
-    // -----------------------------------
+
+    // Generate or composite image on-the-fly if includeImage is enabled or custom image is present
+    if (imageBase64) {
+      if (imageHookText) {
+        try {
+          console.log(`[test-cron] Compositing hook text on user-uploaded custom background...`);
+          const compositeResult = await createCompositeImageCloudinary(imageBase64, imageHookText);
+          imageBase64 = compositeResult.compositeBase64;
+          cloudPublicId = compositeResult.publicId;
+          console.log(`[test-cron] Composited successfully.`);
+        } catch (err) {
+          console.warn("⚠️ Custom background compositing failed:", err.message);
+        }
+      }
+    } else if (topic.includeImage) {
+      try {
+        console.log(`[test-cron] Generating image on-the-fly for topic: "${topic.title}" with hook: "${imageHookText || topic.title}"`);
+        const imagePrompt = `Professional background image creative for the "${topic.title}". KEEP IT minimal, Clean, modern. WARNING: NO TEXT IN THE IMAGE!, NO BRANDS LOGOS IN THE IMAGE!, NO FACES IN THE IMAGE.`;
+        const rawAiBase64 = await generateImage(imagePrompt, topic.useAiImage === true);
+        const compositeResult = await createCompositeImageCloudinary(rawAiBase64, imageHookText || topic.title);
+        imageBase64 = compositeResult.compositeBase64;
+        cloudPublicId = compositeResult.publicId;
+        console.log(`[test-cron] Image generated and composited successfully.`);
+      } catch (err) {
+        console.warn("⚠️ Image generation failed:", err.message);
+      }
+    }
 
     // -------------------------------------------
     // STEP 2 — Publish to Target Platform
@@ -537,21 +582,21 @@ export async function publishDuePosts() {
         content,
         platformUserId,
         user.email,
-        rawContent.imageBase64
+        imageBase64
       );
     } else if (platformName === "facebook") {
       publishResult = await publishToFacebook(
         accessToken,
         content,
         platformUserId,
-        rawContent.imageBase64
+        imageBase64
       );
     } else if (platformName === "instagram") {
       publishResult = await publishToInstagram(
         accessToken,
         content,
         platformUserId,
-        rawContent.imageBase64
+        imageBase64
       );
     } else {
       console.log(`❌ Platform ${platformName} publishing not implemented yet in this iteration.`);
@@ -601,22 +646,88 @@ export async function publishDuePosts() {
       content,
       linkedinPostId: platformName === "linkedin" ? publishResult.postId : null,
       externalPostId: publishResult.postId,
-      cloudPublicId: rawContent.cloudPublicId || null,
+      cloudPublicId: cloudPublicId || null,
       publishedAt: now,
     });
 
     // -------------------------------------------
-    // STEP 4 — Create the next scheduled post
+    // STEP 4 — Create the next scheduled post (and pre-generate content)
     // -------------------------------------------
     const nextScheduledDate = calculateNextDate(schedule);
+
+    let nextContent = "";
+    let nextImageHook = null;
+    let nextStatus = "pending";
+    let nextErrorMessage = null;
+
+    try {
+      console.log(`[test-cron] Pre-generating next scheduled post for: "${topic.title}"`);
+      const dContext = await DailyContext.findOne({
+        where: { userId: user.id, topicId: topic.id },
+        order: [["createdAt", "DESC"]],
+      });
+      const dailyContext = dContext?.content || null;
+
+      const previousPosts = await ScheduledPost.findAll({
+        where: {
+          topicId: topic.id,
+          status: "published",
+          content: { [Op.ne]: "" },
+        },
+        order: [["publishedAt", "DESC"]],
+        limit: 6,
+        attributes: ["content"],
+      });
+      const previousContentList = previousPosts.map((p) => p.content);
+
+      const rawContent = await generateSocialMediaPost(
+        topic.title,
+        topic.postLength,
+        topic.description,
+        topic.includeImage === true,
+        user,
+        user.UserMemories || [],
+        previousContentList,
+        topic.useAiImage === true,
+        dailyContext
+      );
+
+      if (rawContent && rawContent.post) {
+        nextContent = rawContent.post;
+        if (topic.includeImage) {
+          nextImageHook = await generateImageHook(nextContent, topic.title);
+        }
+
+        // Compliance check
+        const complianceData = await runCompliancePipeline(nextContent, user.id);
+        if (complianceData.result.success) {
+          nextContent = complianceData.result.finalContent;
+        } else {
+          nextStatus = "failed";
+          nextErrorMessage = "Compliance Violation: " + complianceData.result.error;
+        }
+      } else {
+        nextStatus = "failed";
+        nextErrorMessage = "Pre-generation failed: No content generated.";
+      }
+    } catch (genErr) {
+      console.error(`[test-cron] Failed to pre-generate next scheduled post:`, genErr.message);
+      nextStatus = "failed";
+      nextErrorMessage = "Pre-generation failed: " + genErr.message;
+    }
 
     await ScheduledPost.create({
       scheduleId: schedule.id,
       topicId: topic.id,
       userId: user.id,
-      content: "", // content will be generated when due
-      status: "pending",
+      content: nextContent,
+      imageHook: nextImageHook,
+      status: nextStatus,
+      errorMessage: nextErrorMessage,
       scheduledFor: nextScheduledDate,
+      imageBase64: null,
+      platform: schedule.platform || "linkedin",
+      platformUserId: schedule.platformUserId || null,
     });
 
     console.log(
