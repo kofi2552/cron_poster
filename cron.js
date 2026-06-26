@@ -26,6 +26,35 @@ export async function generateSocialMediaPost(
   let post = null;
   let imageBase64 = null;
 
+  // Extract beginning, middle, and ending phrases of the last 4 posts to strictly avoid
+  const avoidList = previousPosts.slice(0, 4).map((postText, idx) => {
+    if (!postText) return null;
+    const lines = postText.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return null;
+
+    const beginning = lines[0];
+    
+    let ending = lines[lines.length - 1];
+    if (ending.split(/\s+/).every(word => word.startsWith("#")) && lines.length > 1) {
+      ending = lines[lines.length - 2];
+    }
+
+    let mid = "";
+    if (lines.length > 2) {
+      const midIdx = Math.floor(lines.length / 2);
+      mid = lines[midIdx];
+    }
+
+    return {
+      postIndex: idx + 1,
+      avoidBeginnings: beginning ? [beginning] : [],
+      avoidMiddlePhrases: mid ? [mid] : [],
+      avoidEndings: ending ? [ending] : []
+    };
+  }).filter(item => item !== null);
+
+  const avoidListJson = JSON.stringify(avoidList, null, 2);
+
   // --------------------------------------------------
   // 1️⃣ TEXT GENERATION (CRITICAL — MUST SUCCEED)
   // --------------------------------------------------
@@ -54,6 +83,12 @@ export async function generateSocialMediaPost(
                   
                   PREVIOUSLY PUBLISHED CONTENT ON THIS TOPIC (DO NOT REPEAT THESE ANGLES/IDEAS):
                   ${previousPosts.map((p, i) => `[Post ${i + 1}]: ${p}`).join("\n")}
+                  
+                  STRICT AVOIDANCE OF ROBOTIC PHRASES & REPETITIVE STRUCTURES:
+                  Study the beginning, middle, and ending phrases of the last 4 posts generated for this topic:
+                  ${avoidListJson}
+                  
+                  * CRITICAL: For the new post you are generating, NONE of the phrases, structures, or styles found in the above 'avoidBeginnings', 'avoidMiddlePhrases', or 'avoidEndings' should be present. Do not use the same hooks, opening patterns, writeup directions, or closing statements. Make the generated content highly distinct and variable!
                   
                   YOUR GOAL:
                   Write a completely fresh, engaging post about this topic. 
