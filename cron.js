@@ -363,7 +363,12 @@ export async function publishDuePosts() {
 
     // Platform-agnostic token retrieval
     let account = await SocialAccount.findOne({
-      where: { userId: user.id, platform: platformName, isActive: true }
+      where: { 
+        userId: user.id, 
+        platform: platformName, 
+        isActive: true,
+        accessToken: { [Op.ne]: null }
+      }
     });
 
     let accessToken = null;
